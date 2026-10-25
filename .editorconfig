@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Ronald Rink, d-fens GmbH
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Editor configuration - the cross-editor half of the coding
+# conventions (QA 0.0210/0.0230). The machine-enforced side is ESLint
+# plus tsconfig; this file keeps any editor (and agent) consistent
+# with it.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+max_line_length = 120
+
+[*.md]
+# Markdown uses hard line wraps; do not trim trailing whitespace here.
+trim_trailing_whitespace = false

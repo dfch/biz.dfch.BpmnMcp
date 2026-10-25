@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 Ronald Rink, d-fens GmbH
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Lint and Test
+
+# Mirrors the biz.dfch.SpecMgr ci.yml family pattern, adapted to this
+# repository's TypeScript/Node stack (QA 0.0180): a single build-gate
+# job - nothing is published or deployed (QA 0.0080). The commands run
+# from the repository root, where the private workspaces manifest
+# delegates them to the components (QA 0.0270). The sister's
+# "Make sure X is correct" drift-gate steps have no counterpart yet,
+# because this repository has no generated artifacts; they join this
+# workflow when it does.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    env:
+      # Opt-in to Node 24 to avoid Node 20 deprecation warnings (effective June 2026).
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      # uses: actions/checkout@v5
+      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+    - name: Set up Node.js
+      # uses: actions/setup-node@v4 (v4.4.0)
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      with:
+        node-version: 24
+        cache: npm
+
+    - name: Install dependencies
+      # `npm ci` at the root - the strict, lockfile-based install of all
+      # workspaces (QA 0.0180/0.0270); requires the committed
+      # package-lock.json (QA 0.0080).
+      run: npm ci
+
+    - name: Lint
+      # ESLint - Allman braces, naming, line width, complexity (QA 0.0220).
+      run: npm run lint
+
+    - name: Build (type-check gate)
+      run: npm run build
+
+    - name: Run tests with coverage
+      # @vitest/coverage-v8 (QA 0.0260); report-only in the first draft.
+      run: npm test -- --coverage

@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 Ronald Rink, d-fens GmbH
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Pre-commit hooks for biz.dfch.BpmnMcp.
+#
+# Mirrors the biz.dfch.SpecMgr .pre-commit-config.yaml family pattern
+# (QA 0.0190): standard hygiene hooks plus `repo: local` gates that run
+# this repository's real commands. Each local hook is `files:`-gated so
+# it only fires when the relevant files are staged, and uses
+# `pass_filenames: false` because the underlying command operates on
+# the whole project, not on individual files. The commands run from the
+# repository root, where the private workspaces manifest delegates them
+# to the components (QA 0.0270).
+#
+# One-time setup per clone:  pre-commit install
+# (or: uvx pre-commit install)
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit
+    rev: v4.7.0
+    hooks:
+      - id: check-yaml
+        # Guards this file, the .github/*.yml workflows, and any future
+        # YAML (e.g. a logging config) - the YAML-side equivalent of the
+        # sister repo's ruff hooks.
+      - id: end-of-file-fixer
+        # The historical session transcript is a frozen record, not a
+        # live document - keep the whitespace fixers away from it.
+        exclude: ^session-feat-0-bpmn-ses_e9db\.md$
+      - id: trailing-whitespace
+        exclude: ^session-feat-0-bpmn-ses_e9db\.md$
+
+  - repo: local
+    hooks:
+      - id: eslint
+        name: ESLint (style + naming + complexity)
+        description: >-
+          Runs the linter (`npm run lint`, QA 0.0220): Allman braces,
+          2-space indent, 120-char lines, naming conventions,
+          complexity <= 10. Requires `npm install` to have been run
+          once in this clone (`node_modules/` is gitignored).
+        entry: npm run lint
+        language: system
+        pass_filenames: false
+        files: ^((apps|packages)/.*|package\.json|tsconfig.*\.json)$
+
+      - id: tsc-build
+        name: tsc build (type-check gate)
+        description: >-
+          Compiles the TypeScript sources (`npm run build`, QA
+          0.0030/0.0180). Runs only when component sources or the
+          project manifests change; same prerequisite as the ESLint
+          hook above.
+        entry: npm run build
+        language: system
+        pass_filenames: false
+        files: ^((apps|packages)/.*|package\.json|tsconfig.*\.json)$
+
+      - id: vitest
+        name: vitest (unit + MCP-level tests)
+        description: >-
+          Runs the test suite (`npm test`, QA 0.0060): the core BPMN
+          module unit tests plus the MCP-level tests that drive the
+          server through the SDK Client on an in-memory transport.
+          Same gating and prerequisite as the hooks above.
+        entry: npm test
+        language: system
+        pass_filenames: false
+        files: ^((apps|packages)/.*|package\.json|tsconfig.*\.json)$

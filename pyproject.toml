@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Ronald Rink, d-fens GmbH
+# SPDX-License-Identifier: AGPL-3.0-only
+
 [project]
 name = "biz-dfch-bpmnmcp"
 version = "0.1.0"
