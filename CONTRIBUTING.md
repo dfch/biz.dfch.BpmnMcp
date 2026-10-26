@@ -76,64 +76,31 @@ npm run dev             # watch mode (QA 0.0050)
 Machine-enforced; the configs are the source of truth (QA 0.0210):
 `.prettierrc` (root, the style), `eslint.config.js` (per component,
 the quality rules), `tsconfig.json` (`strict: true`),
-`.editorconfig` (root), the vitest configuration (coverage).
+`.editorconfig` (root), the vitest configuration (coverage). The
+inviolable principles sit in `CONSTITUTION.md`; every convention is
+decided and spelled out (options, templates, exemptions, rationale)
+in the referenced QA pair. This section is the index, not the
+specification (slimmed 2026-10-24, QA 0.0210):
 
-- **License header (SPDX)**: every source file starts with the
-  two-line declaration header, in the file type's comment syntax
-  (`#` Python/YAML/TOML/INI, `//` JS/TS) (CONSTITUTION principle 1,
-  QA 0.0290):
+- **License header** (two-line SPDX, `AGPL-3.0-only`): CONSTITUTION
+  §1, QA 0.0290 - gate: the vitest drift suite running in
+  `npm test`.
+- **Braces** (K&R): QA 0.0280 - config: `.prettierrc`.
+- **Indentation** (2 spaces, never tabs): QA 0.0230 - config:
+  `.prettierrc` + `.editorconfig`.
+- **Line width** (120): QA 0.0240/0.0280 - config: `.prettierrc`
+  `printWidth`.
+- **Cyclomatic complexity** (measured; threshold user-set in
+  config): QA 0.0240 - config: `eslint.config.js` `complexity`.
+- **Quotes/semicolons/trailing commas**: QA 0.0220/0.0280 - config:
+  `.prettierrc`.
+- **Naming** (Google TS style): QA 0.0250 - config:
+  `eslint.config.js` `naming-convention`.
+- **Pre/postconditions**: QA 0.0200/0.0260 - the in-house assertion
+  module.
 
-  ```
-  # SPDX-FileCopyrightText: 2026 Ronald Rink, d-fens GmbH
-  # SPDX-License-Identifier: AGPL-3.0-only
-  ```
-
-  JSON cannot carry comments: `package.json` manifests declare the
-  license via the `"license": "AGPL-3.0-only"` field instead, other
-  JSON config is exempt. Exempt: `docs/`, the session transcript,
-  the root documentation, `LICENSE` itself, and generated files
-  (the full list in QA 0.0290). A vitest license-header drift gate
-  (runs with `npm test`) fails on any in-scope file without a
-  valid header.
-
-- **Braces: K&R** - the opening brace on the same line, per the
-  Google TypeScript Style Guide the conventions cite (QA 0.0280).
-  Allman was a user preference, recorded in QA 0.0220 and withdrawn
-  2026-10-24; Biome (the single-tool alternative) was considered and
-  rejected - no cyclomatic-complexity rule (QA 0.0280). Prettier
-  emits the style; `eslint-config-prettier` keeps ESLint from
-  arguing with it.
-
-- **Indentation: 2 spaces**, never tabs (Prettier `tabWidth: 2` +
-  `.editorconfig`) (QA 0.0230).
-
-- **Line width: 120 characters** (Prettier `printWidth: 120`;
-  unbreakable lines such as long URLs are left as-is) (QA
-  0.0240/0.0280).
-
-- **Cyclomatic complexity**: measured per function by ESLint's
-  `complexity` rule (the tool); the effective threshold is a value
-  in `eslint.config.js` - first-draft default 10 (the ecosystem's
-  common starting value, not a requirement), set or adjust it there
-  (QA 0.0240). Refactor, do not waive.
-
-- **Quotes/semicolons**: single quotes, semicolons on, trailing
-  commas in multi-line constructs (Prettier `singleQuote: true`,
-  `semi: true`, `trailingComma: "all"`) (QA 0.0220/0.0280).
-
-- **Naming** (QA 0.0250, enforced via
-  `@typescript-eslint/naming-convention`):
-
-  | Construct | Convention | Example |
-  |---|---|---|
-  | classes, interfaces, type aliases, enums, enum members | PascalCase | `BpmnCore`, `ToolResult` |
-  | functions, methods, variables, parameters, properties | camelCase | `loadDiagram` |
-  | module-level constants | UPPER_SNAKE_CASE | `DEFAULT_PORT` |
-  | files and directories | kebab-case | `preview-server.ts` |
-
-- **Pre/postconditions**: in-house assertion helpers with TypeScript
-  `asserts` signatures; zod validates data at tool/module boundaries
-  (QA 0.0200/0.0260).
+If this index and a machine config disagree, the config wins - it is
+what CI enforces (QA 0.0210).
 
 ---
 

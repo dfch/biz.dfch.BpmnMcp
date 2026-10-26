@@ -101,7 +101,7 @@ just do not strip, hide, or cover that watermark.
 ## Coding conventions
 
 Conventions and procedures: `CONTRIBUTING.md` (setup, commands, the
-convention list). Machine enforcement: Prettier (the formatter:
+convention index). Machine enforcement: Prettier (the formatter:
 K&R braces, 2-space indent, 120-char lines, single quotes) +
 ESLint/typescript-eslint (the linter: naming,
 cyclomatic-complexity measurement) + `eslint-config-prettier` +

@@ -621,9 +621,12 @@ only in prose is drift-prone - the sister repository's culture is
 machine gates, so every convention here has a machine home. (2)
 **`CONTRIBUTING.md` at the repository root** - the family pattern
 (the sister has one; GitHub auto-links it from pull requests): the
-human-readable convention list plus the procedures (setup, commands,
-logging and telemetry configuration, commit guidelines, and how to
-change a convention). (3) **`AGENTS.md`** carries a short pointer
+procedures (setup, commands, logging and telemetry configuration,
+commit guidelines, and how to change a convention) plus a one-line
+index of the conventions pointing at `CONSTITUTION.md` and the
+deciding QA pair - the index is navigation, not the specification
+(slimmed 2026-10-24): templates, exemptions, and rationale live in
+the QA pairs, and the machine configs remain the source of truth. (3) **`AGENTS.md`** carries a short pointer
 section (to CONTRIBUTING.md and to this Q&A) - it stays the agent
 entry point, not a convention dump (the sister's AGENTS.md is
 self-contained and large; this repository keeps it lean and
