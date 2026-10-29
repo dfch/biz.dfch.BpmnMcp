@@ -4,7 +4,7 @@ created: '2026-10-29T11:13:26.433+01:00'
 id: feat-1-bpmn-mcp-scaffold
 status: planning
 type: feat
-updated: '2026-10-29T15:31:04.008+01:00'
+updated: '2026-10-29T17:23:23.825+01:00'
 version: 1.0.0
 ---
 
@@ -14,52 +14,54 @@ version: 1.0.0
 
 ### Overview
 
-The repository holds specifications and conventions, but no implementation. Every gate that CONSTITUTION principle 3 and CONTRIBUTING describe (ESLint, Prettier, tsc, vitest, the license-header drift gate) exists only as prose, and CI fails today because `npm ci` has no `package.json` to read. This feature closes that gap in two phases within one pull request that leaves CI green. Phase 100 creates the npm-workspaces scaffold so that every gate runs for real. Phase 110 adds the walking skeleton: an MCP server over stdio that exposes the `version` and `config` resources, logs to a file and to stderr, resolves its paths, and is verified through an in-memory MCP client test. The BPMN tools (`import`, `export`, and the rest) are not part of this feature, and neither is the browser preview server; this feature is only the scaffold-and-skeleton slice of the decision record's Confirmation criterion and of QA pair 1.0070's "first increment" (resources plus `import`/`export`/logging) -- both are satisfied only once the next feature (see Dependencies, Blocks) ships.
+The repository holds specifications and conventions, but no implementation. Every gate that CONSTITUTION principle 3 and CONTRIBUTING describe (ESLint, Prettier, tsc, vitest, the license-header drift gate) exists only as prose, and CI fails today because `npm ci` has no `package.json` to read. This feature closes that gap in two phases within one pull request that leaves CI green. Phase 100 creates the npm-workspaces scaffold so that every gate runs for real, and ends with a throwaway interop spike that confirms the Phase 110 dependency choices before anything beyond the scaffold is committed. Phase 110 adds the walking skeleton: an MCP server over stdio that exposes the `version` and `config` resources, logs to a file and to stderr, resolves its paths, and is verified through an in-memory MCP client test. The BPMN tools (`import`, `export`, and the rest) are not part of this feature, and neither is the browser preview server; this feature is only the scaffold-and-skeleton slice of the decision record's Confirmation criterion and of QA pair 1.0070's "first increment" (resources plus `import`/`export`/logging) -- both are satisfied only once the next feature (see Dependencies, Blocks) ships.
 
 ### Requirements
 
-- REQ-001: The repository root is a private npm-workspaces manifest (`workspaces: ["apps/*", "packages/*"]`) with a committed `package-lock.json`, and the only component is `apps/mcp-server/` (package name `biz.dfch.bpmnmcp`).
-- REQ-002: The root manifest delegates the scripts `build`, `lint`, `format`, `format:check`, `test`, and `dev` to the workspaces.
-- REQ-003: The machine configs exist and carry the conventions of QA 0.0220 to 0.0280: `.prettierrc` (K&R braces, 2 spaces, `printWidth` 120, single quotes, semicolons, trailing commas), `eslint.config.js` (`complexity` at 10, `@typescript-eslint/naming-convention`, `no-console`, `eslint-config-prettier`), and `tsconfig.json` with `strict: true`.
-- REQ-004: A license-header drift gate (vitest) enumerates the in-scope files with `git ls-files`, applies the exemptions of QA 0.0290, and fails on any in-scope file without the two-line SPDX header (or without `"license": "AGPL-3.0-only"` for a `package.json`).
-- REQ-005: CI and pre-commit run the same gates: lint, `format:check`, build, and test (CI with coverage), and their comments no longer mention Allman braces.
+- REQ-001: The repository root is a private npm-workspaces manifest (`workspaces: ["apps/*", "packages/*"]`, `"engines": {"node": ">=24"}`) with a committed `package-lock.json`, and the only component is `apps/mcp-server/` (package name `biz.dfch.bpmnmcp`, with a `bin` entry pointing at `dist/index.js`).
+- REQ-002: The root manifest delegates the scripts `build`, `lint`, `format`, `format:check`, `test`, and `dev` to the workspaces; the root `test` script forwards extra arguments to the workspace's vitest invocation (e.g. `npm test -- --coverage` actually runs vitest with coverage, not an npm flag that is silently swallowed).
+- REQ-003: The machine configs exist and carry the conventions of QA 0.0220 to 0.0280: a root `.prettierrc` (K&R braces, 2 spaces, `printWidth` 120, single quotes, semicolons, trailing commas) plus a root `.prettierignore` (generated output, lockfiles, `docs/` content mdformat already owns, and the historical session transcript), a per-component `eslint.config.js` (`complexity` at 10, `@typescript-eslint/naming-convention`, `no-console`, `eslint-config-prettier`), and a per-component `tsconfig.json` with `strict: true`, both living in `apps/mcp-server/`.
+- REQ-004: A license-header drift gate (vitest, resolving the repository root independent of the test runner's working directory) enumerates the in-scope files with `git ls-files --cached --others --exclude-standard` (tracked and staged files alike, so an uncommitted fixture is still seen), applies the exemptions of QA 0.0290 plus 0.0120/0.0290's now-superseded `diagrams/` entry (see Design Notes) and an explicit extension/path list for every new file type this feature adds (`.gitignore`, `.node-version`, `.env.example`, `.prettierrc`, `.prettierignore`, `eslint.config.js`, `apps/mcp-server/logging.json`), and fails on any in-scope file without the two-line SPDX header (or without `"license": "AGPL-3.0-only"` for a `package.json`).
+- REQ-005: CI and pre-commit run the same gates -- lint, `format:check`, build, and test (CI with coverage) -- over the same file scope: the pre-commit `files:` pattern widens to also match the root configs (`.prettierrc`, `.prettierignore`, `eslint.config.js`, `.gitignore`, `.node-version`) and a new `format:check` hook is added; neither workflow's comments mention Allman braces any longer.
 - REQ-006: The server starts over the stdio transport using the official MCP SDK, and writes nothing to stdout except protocol frames.
-- REQ-007: The server exposes a `version` resource (server name and version) and a `config` resource (the effective configuration, including the absolute paths in use).
-- REQ-008: The server logs JSON lines with pino to `./logs/server.log` (daily rotation, seven files kept) and to stderr, with `BPMN_MCP_LOG_FILE`, `BPMN_MCP_LOG_LEVEL`, `BPMN_MCP_LOG_ROTATE`, and `BPMN_MCP_LOG_RETAIN` as overrides.
-- REQ-009: Configuration precedence is real environment (including `.env`, which never overrides a variable the real environment already provides), then `logging.json`, then built-in defaults; `.env` is loaded with Node's `process.loadEnvFile()` and a missing file is not an error.
-- REQ-010: The documents root is `BPMN_MCP_DOCS_DIR` (default `./docs`) with the `prc` subdirectory hardcoded, so processes live in `docs/prc/`; resolving the path never creates a directory.
+- REQ-007: The server exposes a `version` MCP resource (the server's name and version, mirroring `specmgr://version`) and a `config` MCP resource (mirroring `specmgr://config`): the effective log destination, level, and rotation (REQ-008), the OTel endpoint state (always "disabled" in this feature, since instrumentation is out of scope), the resolved `docs`/`prc` paths (REQ-010) as absolute paths, and the bpmnlint preset name (reported as "not yet configured", since bpmnlint is out of scope).
+- REQ-008: The server logs JSON lines with pino, through `pino-roll`, to a rolling file under `./logs` (base name `server`, daily rotation, `pino-roll`'s own `<base>.<date>.<count>.<ext>` naming -- the exact rotated-file name and the `limit.count` value needed to keep seven files total, active file included, are confirmed by the Task 100.165 interop spike, not assumed up front) and to stderr, with `BPMN_MCP_LOG_FILE`, `BPMN_MCP_LOG_LEVEL`, `BPMN_MCP_LOG_ROTATE`, and `BPMN_MCP_LOG_RETAIN` as overrides.
+- REQ-009: Configuration precedence is real environment (including `.env`, which never overrides a variable the real environment already provides), then `logging.json`, then built-in defaults; `.env` is loaded with Node's `process.loadEnvFile()`, and a missing `.env` or a missing `logging.json` is not an error (both tiers simply fall through to the next).
+- REQ-010: The documents root is `BPMN_MCP_DOCS_DIR` (default `./docs`) with the `prc` subdirectory hardcoded, so processes live in `docs/prc/`; resolving the path never creates a directory. This feature does not read or write anything under `docs/prc/`: the directory inventory, the `prc-<uuid>-<slug>.bpmn` filename scheme, and the checksum cache are the next feature's job (see Scope, Dependencies); this feature only resolves and reports the path.
 - REQ-011: An MCP-level test drives the server through the SDK `Client` on an in-memory transport and asserts the resource list, the `version` content, and the `config` content.
 
 ### Acceptance Criteria
 
-- [ ] ACC-001: On a clean clone, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass from the repository root.
+- [ ] ACC-001: On a clean clone, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass from the repository root, and the last command's output includes a coverage summary (proving the flag reached vitest, not npm).
 - [ ] ACC-002: The CI workflow is green on the pull request, and `pre-commit run --all-files` passes locally.
-- [ ] ACC-003: A deliberately header-less in-scope file (a temporary fixture, not committed) makes the drift gate fail; the exempt paths of QA 0.0290 are not asserted.
+- [ ] ACC-003: A deliberately header-less in-scope file, staged but not committed (`git add` only), makes the drift gate fail; the exempt paths of QA 0.0290 are not asserted.
 - [ ] ACC-004: A temporary `console.log` in a source file makes `npm run lint` fail.
 - [ ] ACC-005: A function with a cyclomatic complexity above 10 makes `npm run lint` fail.
 - [ ] ACC-006: Starting the built server (`node apps/mcp-server/dist/index.js`) and listing its resources with the MCP inspector shows `version` and `config`; stdout carries only protocol frames.
-- [ ] ACC-007: After a start, `./logs/server.log` exists in the working directory and contains JSON lines; the same lines appear on stderr.
+- [ ] ACC-007: After a start, the active log file exists under `./logs` (named per the scheme ACC-012's spike confirms) and contains JSON lines; the same lines appear on stderr.
 - [ ] ACC-008: With `BPMN_MCP_DOCS_DIR` set to a temporary directory, the `config` resource reports the absolute path `<tmp>/prc`, and the directory is not created by reading the resource.
-- [ ] ACC-009: A variable set in the real environment wins over the same key loaded from `.env`, and a variable set only in `.env` wins over the same key in `logging.json`.
+- [ ] ACC-009: A variable set in the real environment wins over the same key loaded from `.env`, and a variable set only in `.env` wins over the same key in `logging.json`; a clone with neither a `.env` nor a `logging.json` present still starts, using only built-in defaults.
 - [ ] ACC-010: The MCP-level test passes without spawning a process.
 - [ ] ACC-011: `npm run dev` starts a watch build (a source file edit is picked up without re-running the command).
-- [ ] ACC-012: The interop spike of Task 110.100 succeeds: `bpmn-moddle` and `bpmnlint` load under Node 24 from the ESM TypeScript workspace layout, `bpmnlint` finds `bpmnlint:recommended` with hoisted dependencies, the MCP SDK registration API and its `zod` requirement are confirmed, and the bpmn-js dist-asset serving approach is confirmed; the result (pass, or which check failed) is recorded as a Progress → Updates entry before any further Phase 110 task starts.
+- [ ] ACC-012: The interop spike of Task 100.165 succeeds: `bpmn-moddle` and `bpmnlint` load under Node 24 from the ESM TypeScript workspace layout, `bpmnlint` finds `bpmnlint:recommended` with hoisted dependencies, the MCP SDK registration API and whether it needs `zod` as a peer are confirmed, `pino-roll`'s actual rotated-file naming and the `limit.count` value needed for "seven files total" are confirmed under Node 24 with a stderr multistream, and the bpmn-js dist-asset serving approach is confirmed; the result (pass, or which check failed) is recorded as a Progress → Updates entry, and no `feat:` commit is made (Phase 100's scaffold stays local/uncommitted beyond the earlier `chore:`/`ci:`/`docs:` commits) until this acceptance criterion is green.
+- [ ] ACC-013: The repository's `.gitignore`, after Task 100.100, no longer references `diagrams/` anywhere, and `BPMN_MCP_DOCS_DIR`'s resolved path is the only runtime artifact location this feature's tests assert (besides `./logs`).
 
 ### Scope
 
 #### Included
 
 - The root manifest, the lock file, `apps/mcp-server/` with its `package.json`, `tsconfig.json`, `eslint.config.js`, `src/`, `test/`, and `apps/mcp-server/logging.json`.
-- The root `.prettierrc`, `.env.example`, and the `.gitignore`, `.node-version`, and Dependabot changes of Task 100.100 (see Task List).
-- The `format:check` gate in CI and pre-commit, and the corrected comments in both.
+- The root `.prettierrc`, `.prettierignore`, `.env.example`, and the `.gitignore`, `.node-version`, and Dependabot changes of Task 100.100 (see Task List).
+- The `format:check` gate in CI and pre-commit, the widened pre-commit `files:` scope, and the corrected comments in both.
 - The license-header drift gate, the smoke test, and the MCP-level test.
 - The server entry point, path resolution, configuration loading, logging, and the two resources.
-- The interop spike that confirms the dependency choices (see Design Notes).
+- The interop spike that confirms the dependency choices, including the `pino-roll` naming/retention check (see Design Notes).
+- The `docs:` commit's requirement/Q&A updates (see Design Notes and Task 100.120), and the pull request itself.
 
 #### Explicitly Out Of Scope
 
 - Every BPMN tool: `import`, `export`, `parse`, `validate`, `preview`, `create`, `change`.
-- The `prc` artifact core (filename scheme, directory scan, checksum cache), which belongs to the next feature.
+- The `prc` artifact core: the `prc-<uuid>-<slug>.bpmn` filename scheme, the directory scan that builds the process inventory from it, and the checksum cache -- all of this belongs to the next feature. This feature only records the filename-scheme decision (QA pair 0.0300, Design Notes) so the next feature does not have to re-elicit it; it implements none of it.
 - OpenTelemetry instrumentation and the `precondition` and `postcondition` helpers; they arrive with the first code that uses them.
 - The preview server and bpmn-js.
 - Coverage thresholds, per-artifact locking, and the dependency-license gate.
@@ -70,57 +72,61 @@ The repository holds specifications and conventions, but no implementation. Ever
 #### Depends On
 
 - DEC fdc84432-1b48-4eb9-82e0-ec13cb8cf8ba: the Node/TypeScript MCP server decision.
-- QA 818fac76-96fb-4e3c-acb8-e5520fab5913: the implementation Q&A, pairs 0.0030 to 0.0290. Pair 0.0300 (the SpecMgr-model path convention referenced in Design Notes) does not exist yet; this feature's own Task 100.120 adds it as part of the `docs:` commit, so it is a task of this feature, not a precondition for it.
+- QA 818fac76-96fb-4e3c-acb8-e5520fab5913: the implementation Q&A, pairs 0.0030 to 0.0290, plus pairs 1.0020, 1.0030, 1.0070, 1.0080, and 9.0010 (the state/registry/UUID design this feature's Task 100.120 corrects -- see Design Notes). Pair 0.0300 (the SpecMgr-model path convention and the `prc` filename scheme referenced in Design Notes) does not exist yet; this feature's own Task 100.120 adds it as part of the `docs:` commit, so it is a task of this feature, not a precondition for it.
 
 #### Blocks
 
-- The next feature: the `prc` artifact core with `import` and `export`.
+- The next feature: the `prc` artifact core with `import` and `export`, built on the filename scheme this feature's `docs:` commit records.
 
 ### Design Notes
 
-One pull request with these commits, in order: `chore:` (`.gitignore`, `.node-version`, Dependabot), `ci:` (the `format:check` gate, the Allman comments, the pre-commit `files:` gate), `docs:` (Q&A pair 0.0300, superseded markers, CONTRIBUTING, the requirement updates), and `feat:` (Phase 100 and Phase 110). Only the final state has to be green.
+One pull request with these commits, in order: `chore:` (`.gitignore`, `.node-version`, Dependabot), `ci:` (the `format:check` gate, the Allman comments, the pre-commit `files:` gate), `docs:` (Q&A pair 0.0300, superseded markers, CONTRIBUTING, the requirement updates), then the Phase 100 scaffold is built and the interop spike (Task 100.165) is run against it -- locally, uncommitted -- and only once it is green does `feat:` (Phase 100 and Phase 110 together) get committed. If the spike fails, this pull request still ships `chore:`/`ci:`/`docs:` on their own (CI stays green on just those, since they touch no `apps/mcp-server` code yet), and the scaffold/skeleton work continues in a follow-up: no half-built, committed skeleton is ever left behind. Only the final state has to be green.
 
-Phase 100 installs development dependencies only (`typescript`, `vitest`, `@vitest/coverage-v8`, `@types/node`, `eslint`, `typescript-eslint`, `prettier`, `eslint-config-prettier`). Runtime dependencies arrive in Phase 110 with the code that uses them (`@modelcontextprotocol/sdk`, `pino`, `pino-roll`, and `zod` if the SDK needs it as a peer), so no dependency sits unused and Dependabot stays quiet.
+Phase 100 installs development dependencies only (`typescript`, `vitest`, `@vitest/coverage-v8`, `@types/node`, `eslint`, `typescript-eslint`, `prettier`, `eslint-config-prettier`). Runtime dependencies arrive in Phase 110 with the code that uses them (`@modelcontextprotocol/sdk`, `pino`, `pino-roll`, and `zod` if the spike confirms the SDK needs it, or if it otherwise helps -- e.g. as the validation layer for tool input once tools exist), so no dependency sits unused and Dependabot stays quiet. The interop spike itself installs `bpmn-moddle`/`bpmnlint`/`zod` ad hoc, outside `package.json`, purely to exercise them under Node 24 in the workspace layout; none of the three become a committed dependency through the spike alone.
 
-The drift gate lives in `apps/mcp-server/test/` as QA 0.0290 says, but reads the file list from `git ls-files` at the repository root, so it also covers the root configs and the Python scaffold. In-scope and exempt paths follow QA 0.0290 exactly. Documentation under `docs/` is exempt, so committed diagrams in `docs/prc/` need no header.
+**Why zod, if it comes up**: `zod` is a TypeScript runtime-schema-validation library. It is not a requirement from this repository's elicitation; QA pair 0.0200 records an agent's recommendation (compile-time `tsc` types vanish at runtime, and the official MCP SDK's tool-registration helper takes a zod schema as a tool's input definition, so using it validates every tool call at the protocol boundary). This feature ships no tools, so nothing here uses zod yet; whether the MCP SDK pulls it in as a peer dependency regardless is exactly what Task 100.165 checks, and QA pair 0.0200's "added to the dependency set" wording is superseded accordingly (see below) to "added when the code that needs it lands".
 
-Paths follow the SpecMgr model (QA 0.0300). `BPMN_MCP_DOCS_DIR` is a root with a hardcoded per-type subdirectory, like `SPECMGR_DOCS_DIR`. The server expects the host to start it in the consuming repository, so relative defaults resolve against the working directory. There is no state directory and no registry. Logs go to `./logs`. Tests run with a temporary working directory and set `BPMN_MCP_DOCS_DIR`; no test-only override exists.
+**No `diagrams/` runtime directory, no registry file**: the file path model is `BPMN_MCP_DOCS_DIR` / `docs/prc/` (REQ-010), scanned directly -- there is no `diagrams/` directory and no `registry.json`. QA pairs 0.0120 and 0.0290 both still list `diagrams/` as a gitignored/exempt runtime directory from the superseded single-diagram design; Task 100.120 corrects both (drops `diagrams/` from the `.gitignore` template text and from the drift-gate exemption list) and the repository's actual `.gitignore` never gains a `diagrams/` line (see ACC-013). Dropping the registry **only** removes the `registry.json` file and its checksum-cache bookkeeping -- it does not remove process identification by UUID: pairs 1.0070/1.0080's "every process gets a UUID" and the `.../processes/<uuid>` preview URL scheme (4.0010) stand, because the UUID will instead live in the process's own filename. Task 100.120 records that filename scheme as the new QA pair 0.0300: `prc-<uuid>-<slug>.bpmn` under `docs/prc/`, matching this repository's own `<type>-<uuid>-<slug>` convention for its specification documents (`req-...`, `dec-...`, `qa-...`). The directory listing is then the inventory; no separate registry file is needed. Pair 1.0070 is corrected to drop "registered path" in favor of this filename scheme, and pair 9.0010 is corrected so `export` writes only to an explicit path (not a now-nonexistent "registered path"). None of this is implemented in this feature (see Scope); it is recorded now so the next feature does not re-derive it.
 
-`no-console` is the machine gate for the rule that nothing writes to stdout. It does not cover third-party code that calls `console.log`, so ACC-006 checks stdout at runtime. The logger is constructed with explicit destinations (file and stderr), because pino writes to stdout by default.
+The drift gate lives in `apps/mcp-server/test/` as QA 0.0290 says, but reads the file list from the repository root (resolved via `import.meta.url`, not the test runner's working directory) with `git ls-files --cached --others --exclude-standard`, so it also covers the root configs, the Python scaffold, and any staged-but-uncommitted fixture (ACC-003). In-scope and exempt paths follow QA 0.0290, amended by this feature's new file types (REQ-004) and by dropping `diagrams/` from the exemption list (immediately above). Documentation under `docs/` is exempt, so committed diagrams in `docs/prc/` need no header.
 
-Interop spike (first task of Phase 110, throwaway): load `bpmn-moddle` and `bpmnlint` under Node 24 from an ESM TypeScript project in the workspace layout, check that `bpmnlint` finds `bpmnlint:recommended` with hoisted dependencies, check the MCP SDK registration API and its `zod` requirement, and check how the bpmn-js dist assets can be served locally. A failure puts Option 1 of the decision record at risk; if any check fails, Task 110.100 stops, the failing check and its details are recorded as a Progress → Updates entry (and, if it blocks further work, as a Progress → Blockers entry) before any later Phase 110 task starts. The first two checks only need the libraries loaded; they add no dependency to the committed code in this feature unless the spike commits to them.
+Paths follow the SpecMgr model (QA 0.0300). `BPMN_MCP_DOCS_DIR` is a root with a hardcoded per-type subdirectory, like `SPECMGR_DOCS_DIR`. The server expects the host to start it in the consuming repository, so relative defaults resolve against the working directory. Logs go to `./logs`. Tests run with a temporary working directory and set `BPMN_MCP_DOCS_DIR`; no test-only override exists.
+
+`no-console` is the machine gate for the rule that nothing writes to stdout. It does not cover third-party code that calls `console.log`, so ACC-006 (and, where practical, an automated spawn-based test) checks stdout at runtime. The logger is constructed with explicit destinations (file and stderr via `pino.multistream`), because pino writes to stdout by default.
+
+Interop spike (Task 100.165, throwaway, run against the Phase 100 scaffold before any `feat:` commit -- see the commit-order paragraph above): load `bpmn-moddle` and `bpmnlint` under Node 24 from an ESM TypeScript project in the workspace layout; check that `bpmnlint` finds `bpmnlint:recommended` with hoisted dependencies; check the MCP SDK registration API and whether it needs `zod` as a peer; check `pino-roll`'s actual rotated-file naming (its documented `<base>.<date>.<count>.<ext>` scheme) and the `limit.count` value needed to keep seven files total (active file included) under a `pino.multistream` with a stderr stream on Node 24; and check how the bpmn-js dist assets can be served locally. A failure puts Option 1 of the decision record at risk; if any check fails, Task 100.165 stops, the failing check and its details are recorded as a Progress → Updates entry (and, if it blocks further work, as a Progress → Blockers entry), and no `feat:` commit is made.
 
 ### Related Decisions
 
 This section lists the artifacts this feature implements or is traced to (the "why", for anyone auditing the implementation); see Dependencies above for what this feature needs before it can start or is blocked on.
 
 - DEC fdc84432-1b48-4eb9-82e0-ec13cb8cf8ba: Use a Node/TypeScript MCP Server for Agent-Driven BPMN Modeling -- this feature implements the scaffold half of Option 1, not yet its full Confirmation criterion (see Overview).
-- QA 818fac76-96fb-4e3c-acb8-e5520fab5913: BPMN MCP Server Stage 1 Implementation Research Q&A -- source of the machine-gate conventions (pairs 0.0220-0.0290) and the logging/config design (0.0160-0.0170) this feature implements; this feature's Task 100.120 adds the new pair 0.0300.
+- QA 818fac76-96fb-4e3c-acb8-e5520fab5913: BPMN MCP Server Stage 1 Implementation Research Q&A -- source of the machine-gate conventions (pairs 0.0220-0.0290) and the logging/config design (0.0160-0.0170) this feature implements; this feature's Task 100.120 adds the new pair 0.0300 and corrects the now-superseded registry/`diagrams/` wording in pairs 0.0030, 0.0040, 0.0090, 0.0120, 0.0160, 0.0200, 0.0220, 0.0290, 1.0020, 1.0030, 1.0070, 1.0080, and 9.0010.
 - REQ 0caae3bd-b4e8-47c6-a417-520766031f27: The tool shall expose its functionality as a Model Context Protocol server
 
 ### Task List
 
-#### Phase 100: Scaffold and Gates
+#### Phase 100: Scaffold, Gates, and the Interop Spike
 
-- [ ] Task 100.100: Add the `chore:` commit: merged `.gitignore` (with `logs/`), `.node-version` (24), and the `github-actions` ecosystem in `dependabot.yml`.
-- [ ] Task 100.110: Add the `ci:` commit: the `format:check` step in `ci.yml` and the pre-commit config, corrected Allman comments, and a pre-commit `files:` gate that also covers root configs and the Python scaffold.
-- [ ] Task 100.120: Add the `docs:` commits: Q&A pair 0.0300, superseded markers in 0.0040, 0.0090, 0.0160, 0.0220, 1.0020, 1.0030, and 1.0080, the 1.0070 and 9.0010 fixes, CONTRIBUTING, and the five requirement updates.
-- [ ] Task 100.130: Create the root `package.json` (private, workspaces, delegating scripts, `"license": "AGPL-3.0-only"`) and `apps/mcp-server/package.json`.
-- [ ] Task 100.140: Create `tsconfig.json` (strict), `.prettierrc`, and `eslint.config.js` with `complexity`, `naming-convention`, and `no-console`.
-- [ ] Task 100.150: Set up vitest and write the license-header drift gate and one smoke test.
+- [ ] Task 100.100: Add the `chore:` commit: merged `.gitignore` (with `logs/`, and no `diagrams/` line), `.node-version` (24), and the `github-actions` ecosystem in `dependabot.yml`.
+- [ ] Task 100.110: Add the `ci:` commit: the `format:check` step in `ci.yml` and the pre-commit config, corrected Allman comments, and a pre-commit `files:` gate widened to also cover the root configs and the Python scaffold.
+- [ ] Task 100.120: Add the `docs:` commits (REQ-004, Dependencies): Q&A pair 0.0300 (path model and the `prc-<uuid>-<slug>.bpmn` filename scheme), superseded markers in 0.0030, 0.0040, 0.0090, 0.0120, 0.0160, 0.0200, 0.0220, 0.0290, 1.0020, 1.0030, and 1.0080 (registry/`diagrams/` wording only -- UUID identification stays), the 1.0070 and 9.0010 fixes, `AGENTS.md`'s stale `diagrams/`/in-memory-diagram wording, CONTRIBUTING, and the requirement updates (name which REQ documents change and why once drafted).
+- [ ] Task 100.130: Create the root `package.json` (private, workspaces, `engines.node`, delegating scripts including the argument-forwarding `test` script, `"license": "AGPL-3.0-only"`) and `apps/mcp-server/package.json` (with its `bin` entry).
+- [ ] Task 100.140: Create `apps/mcp-server/tsconfig.json` (strict, `include` covering at least `test/` so an empty `src/` still type-checks), the root `.prettierrc` and `.prettierignore`, and `apps/mcp-server/eslint.config.js` with `complexity`, `naming-convention`, and `no-console`.
+- [ ] Task 100.150: Set up vitest (root config resolving the repository root via `import.meta.url`) and write the license-header drift gate (REQ-004) and one smoke test (a placeholder source file so Task 100.170's `build`/`lint` have something to check).
 - [ ] Task 100.160: Add `.env.example` and run `npm install` to commit the lock file.
-- [ ] Task 100.170: Run all gates locally (ACC-001 to ACC-005) and fix findings.
+- [ ] Task 100.165: Run the interop spike (ACC-012) against the scaffold from Tasks 100.130-100.160 and record the result as a Progress → Updates entry; stop and report if a check fails -- no `feat:` commit follows until this passes.
+- [ ] Task 100.170: Run all gates locally (ACC-001 to ACC-005, ACC-013) and fix findings.
 
 #### Phase 110: Walking Skeleton
 
-- [ ] Task 110.100: Run the interop spike (throwaway) and record the result (pass, or which check failed) as a Progress → Updates entry (ACC-012); stop and report if a check fails before starting any later task in this phase.
-- [ ] Task 110.110: Add the runtime dependencies and implement path resolution (`BPMN_MCP_DOCS_DIR`, hardcoded `prc`, no directory creation) and configuration loading (`.env`, `logging.json`, defaults, precedence).
-- [ ] Task 110.120: Implement logging with pino and pino-roll (file and stderr, never stdout) and `logging.json`.
-- [ ] Task 110.130: Implement the server entry point over stdio, with the `version` and `config` resources.
-- [ ] Task 110.140: Write unit tests for path resolution, configuration precedence, and logging destinations.
-- [ ] Task 110.150: Write the MCP-level test with the SDK `Client` on an in-memory transport (ACC-010).
-- [ ] Task 110.160: Verify ACC-006 to ACC-009 and ACC-011 manually with the MCP inspector and temporary directories.
-- [ ] Task 110.170: Update CONTRIBUTING (commands, variables, working-directory assumption) and open the pull request.
+- [ ] Task 110.100: Add the runtime dependencies confirmed by Task 100.165 and implement path resolution (REQ-010: `BPMN_MCP_DOCS_DIR`, hardcoded `prc`, no directory creation) and configuration loading (REQ-009: `.env`, `logging.json`, defaults, precedence, missing-file tolerance).
+- [ ] Task 110.110: Implement logging (REQ-008) with pino and `pino-roll`, using the naming/retention values Task 100.165 confirmed (file and stderr via `pino.multistream`, never stdout) and `logging.json`.
+- [ ] Task 110.120: Implement the server entry point over stdio (REQ-006), with the `version` and `config` resources (REQ-007).
+- [ ] Task 110.130: Write unit tests for path resolution, configuration precedence (including the missing-`.env`/missing-`logging.json` cases), and logging destinations.
+- [ ] Task 110.140: Write the MCP-level test (REQ-011) with the SDK `Client` on an in-memory transport (ACC-010), and, where practical, automated spawn-based tests for ACC-006/007/008/009's runtime behavior in place of a manual check.
+- [ ] Task 110.150: Verify, manually with the MCP inspector and temporary directories, whatever ACC-006 to ACC-009 and ACC-011 behavior Task 110.140 could not automate.
+- [ ] Task 110.160: Update CONTRIBUTING (commands, variables, working-directory assumption) and open the pull request.
 
 ## Progress
 
@@ -136,6 +142,10 @@ None.
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
 
+#### 2026-10-29 16:00:00.000Z - Refined after feat-refiner review
+
+Applied the errors, gaps, and discrepancies found by a `feat-refiner` pass: fixed the drift-gate file enumeration and the `npm test -- --coverage` argument-forwarding risk, replaced the assumed `pino-roll` file name and retention count with a spike-verified value, scoped `format:check`/the drift gate's new-file-type rule, filled in the `config` resource's fields, added missing acceptance criteria and REQ/ACC cross-references, named the `docs:` commit's scope, moved the interop spike ahead of any `feat:` commit (Task 100.165, so a spike failure never leaves a committed skeleton), and resolved several QA 818fac76 discrepancies: corrected pairs 0.0120/0.0290's stale `diagrams/` wording (the registry and its runtime directory are dropped, but UUID process identification is not -- it moves into the `prc-<uuid>-<slug>.bpmn` filename, recorded as part of the new pair 0.0300), left zod's adoption conditional on whether the MCP SDK needs it or it otherwise helps (no change to the decision, only to pair 0.0200's wording once Task 100.120 lands), and added the missing QA dependency pairs (1.0020/1.0030/1.0070/1.0080/9.0010) to Depends On.
+
 #### 2026-10-29 10:13:26.433Z - Created
 
 Feature plan drafted for the first pull request: scaffold with real gates (Phase 100) and the walking skeleton (Phase 110).
@@ -143,6 +153,10 @@ Feature plan drafted for the first pull request: scaffold with real gates (Phase
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-10-29 16:00:00.000Z - Filename scheme carries the UUID; no registry file
+
+Dropping the registry file (`diagrams/registry.json`) and its `diagrams/` runtime directory does not drop UUID process identification: each process file is named `prc-<uuid>-<slug>.bpmn` under `docs/prc/`, matching this repository's own `<type>-<uuid>-<slug>` convention, so a directory scan is the inventory. This feature only records the scheme (QA pair 0.0300); implementing the scan and the filename scheme is the next feature's job.
 
 #### 2026-10-29 10:13:26.433Z - One pull request, CI green
 
