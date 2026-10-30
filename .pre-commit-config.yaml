@@ -16,8 +16,11 @@
 # (or: uvx pre-commit install)
 
 repos:
-  - repo: https://github.com/pre-commit/pre-commit
-    rev: v4.7.0
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    # Corrected from the wrong `pre-commit/pre-commit` repo URL.
+    # v4.7.0 does not exist for pre-commit-hooks (its tags jump from
+    # v4.6.0 to v5.0.0); pinned to v4.6.0 as the closest real tag.
+    rev: v4.6.0
     hooks:
       - id: check-yaml
         # Guards this file, the .github/*.yml workflows, and any future
