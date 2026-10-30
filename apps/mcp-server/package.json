@@ -1,0 +1,26 @@
+{
+  "name": "biz.dfch.bpmnmcp",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "biz.dfch.bpmnmcp": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "pino": "^10.4.0",
+    "pino-roll": "^4.0.0",
+    "zod": "^4.6.7"
+  }
+}

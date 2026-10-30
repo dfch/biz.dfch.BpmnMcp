@@ -16,8 +16,11 @@
 # (or: uvx pre-commit install)
 
 repos:
-  - repo: https://github.com/pre-commit/pre-commit
-    rev: v4.7.0
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    # Corrected from the wrong `pre-commit/pre-commit` repo URL.
+    # v4.7.0 does not exist for pre-commit-hooks (its tags jump from
+    # v4.6.0 to v5.0.0); pinned to v4.6.0 as the closest real tag.
+    rev: v4.6.0
     hooks:
       - id: check-yaml
         # Guards this file, the .github/*.yml workflows, and any future
@@ -33,16 +36,29 @@ repos:
   - repo: local
     hooks:
       - id: eslint
-        name: ESLint (style + naming + complexity)
+        name: ESLint (naming + complexity)
         description: >-
-          Runs the linter (`npm run lint`, QA 0.0220): Allman braces,
-          2-space indent, 120-char lines, naming conventions,
-          complexity <= 10. Requires `npm install` to have been run
-          once in this clone (`node_modules/` is gitignored).
+          Runs the linter (`npm run lint`, QA 0.0220/0.0280): naming
+          conventions, complexity <= 10 (style - K&R braces, 2-space
+          indent, 120-char lines - is Prettier's job, see the
+          format:check hook below). Requires `npm install` to have
+          been run once in this clone (`node_modules/` is gitignored).
         entry: npm run lint
         language: system
         pass_filenames: false
-        files: ^((apps|packages)/.*|package\.json|tsconfig.*\.json)$
+        files: ^((apps|packages)/.*|package\.json|tsconfig.*\.json|\.prettierrc|\.prettierignore|eslint\.config\.js|\.gitignore|\.node-version)$
+
+      - id: format-check
+        name: Prettier format check
+        description: >-
+          Runs the formatter check (`npm run format:check`, QA
+          0.0280): K&R braces, 2-space indent, 120-char lines,
+          single quotes, semicolons, trailing commas. Same
+          prerequisite as the ESLint hook above.
+        entry: npm run format:check
+        language: system
+        pass_filenames: false
+        files: ^((apps|packages)/.*|package\.json|tsconfig.*\.json|\.prettierrc|\.prettierignore|eslint\.config\.js|\.gitignore|\.node-version)$
 
       - id: tsc-build
         name: tsc build (type-check gate)
@@ -54,7 +70,7 @@ repos:
         entry: npm run build
         language: system
         pass_filenames: false
-        files: ^((apps|packages)/.*|package\.json|tsconfig.*\.json)$
+        files: ^((apps|packages)/.*|package\.json|tsconfig.*\.json|\.prettierrc|\.prettierignore|eslint\.config\.js|\.gitignore|\.node-version)$
 
       - id: vitest
         name: vitest (unit + MCP-level tests)
@@ -66,4 +82,4 @@ repos:
         entry: npm test
         language: system
         pass_filenames: false
-        files: ^((apps|packages)/.*|package\.json|tsconfig.*\.json)$
+        files: ^((apps|packages)/.*|package\.json|tsconfig.*\.json|\.prettierrc|\.prettierignore|eslint\.config\.js|\.gitignore|\.node-version)$

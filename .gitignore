@@ -1,10 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Ronald Rink, d-fens GmbH
+# SPDX-License-Identifier: AGPL-3.0-only
+
 # Python-generated files
 __pycache__/
 *.py[oc]
 build/
-dist/
 wheels/
 *.egg-info
 
 # Virtual environments
 .venv
+
+# Node.js / TypeScript
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local configuration
+.env
+
+# Runtime artifacts
+logs/

@@ -92,6 +92,16 @@ structured logging and a trivial placeholder tool, verify it with the
 MCP inspector, and only then wire in the seven BPMN tools (1.0010)
 one at a time.
 
+**Superseded in part (2026-10-29/30, feat-1-bpmn-mcp-scaffold
+planning):** the "bare minimum" milestone ships no placeholder tool.
+1.0070 phases the first increment as the `version`/`config`
+**resources** plus the `import`/`export` **tools** - never a trivial
+placeholder tool - so the walking-skeleton milestone this pair
+describes is corrected to: scaffold the package, get the official MCP
+SDK server running over stdio with structured logging and the two
+resources, verify it with the MCP inspector, and only then wire in
+`import`/`export` and the rest of the 1.0010 surface.
+
 > **0.0040**: What does the project layout look like - is there a
 > `src/` directory?
 
@@ -122,10 +132,19 @@ standard npm/TypeScript package layout inside it:
 - `.bpmnlintrc` - the bpmnlint rule configuration (per 7.0020);
 - `logging.json` - the logging configuration (per 0.0160).
 
-Runtime artifacts (`diagrams/`, `logs/`) are created in the process
-working directory (the repository root when the host starts the
-server) and are gitignored (0.0120); dependencies are hoisted to a
-single root `node_modules/` by the workspaces. The original position
+Runtime artifacts (`logs/`) are created in the process working
+directory (the repository root when the host starts the server) and
+are gitignored (0.0120); dependencies are hoisted to a single root
+`node_modules/` by the workspaces.
+
+**Superseded in part (2026-10-29/30, feat-1-bpmn-mcp-scaffold
+planning):** there is no `diagrams/` runtime directory. Processes
+live under `BPMN_MCP_DOCS_DIR`'s hardcoded `prc` subdirectory
+(`docs/prc/`, REQ-010), following the SpecMgr-model path convention
+and the `prc-<uuid>-<slug>.bpmn` filename scheme recorded in the new
+pair 0.0300; that path is committed documentation content, not a
+gitignored runtime artifact, so it is not listed alongside `logs/`
+above. The original position
 
 - a root-level single package, with a dedicated subdirectory (e.g.
   `server/`) as the rejected alternative - is superseded by 0.0270;
@@ -314,10 +333,10 @@ current file already covers the overlap by accident: `build/` and
 `dist/` are Python build outputs and also `tsc`'s compile target.
 The Node/TS additions are: `node_modules/` (the dependency
 directory, 0.0080), `coverage/` (vitest's report directory, 0.0060),
-`*.tsbuildinfo` (`tsc`'s incremental-build state), `diagrams/` (the
-runtime diagram directory, 0.0040), `logs/` (the log files, 0.0160),
-and `.env` (local machine configuration, never committed -
-`.env.example` is the committed template). Target content:
+`*.tsbuildinfo` (`tsc`'s incremental-build state), `logs/` (the log
+files, 0.0160), and `.env` (local machine configuration, never
+committed - `.env.example` is the committed template). Target
+content:
 
 ```
 # Python-generated files
@@ -341,13 +360,21 @@ coverage/
 
 # Runtime artifacts
 logs/
-diagrams/
 ```
 
 (`dist/` moves from the Python section to the Node/TS section, since
 that is where it is produced; `build/` stays under Python as the uv
 scaffold's output.) This is a one-file repository change that can be
 applied as soon as this Q&A is accepted.
+
+**Superseded in part (2026-10-29/30, feat-1-bpmn-mcp-scaffold
+planning):** the original answer listed `diagrams/` (the runtime
+diagram directory, 0.0040) among the Node/TS additions and in the
+template above. There is no `diagrams/` runtime directory: processes
+live under the committed `docs/prc/` path (REQ-010, pair 0.0300), not
+a gitignored runtime directory, so `diagrams/` never appears in
+`.gitignore` (ACC-013). The target content above has already been
+corrected to drop it.
 
 > **0.0130**: What is a good telemetry and metering framework for
 > this project - ideally OpenTelemetry compatible?
@@ -585,8 +612,9 @@ idiomatic TypeScript answer is layered: (1) **the type system is
 the compile-time contract** - parameter and return types under
 strict `tsc` already enforce the interface-level contracts, and the
 `tsc` gate (0.0180) makes violations a build failure; (2) **runtime
-boundary contracts are zod** (added to the dependency set,
-0.0080) - the de-facto standard schema library, and notably the
+boundary contracts are zod** (added when the code that needs it
+lands, per the superseded marker below) - the de-facto standard
+schema library, and notably the
 official MCP SDK's `tool()` helper takes a zod schema as the tool's
 input, so every MCP tool input is contract-validated at the
 protocol boundary already; the same schemas guard the core-module
@@ -600,6 +628,17 @@ XML re-parses to the same element set" as the postcondition of
 and module boundaries, plain assert helpers for pre/postconditions;
 if true decorator-style DbC is ever wanted, a small in-house module
 on top of zod - not a framework dependency.
+
+**Superseded in part (2026-10-29/30, feat-1-bpmn-mcp-scaffold
+planning):** "added to the dependency set" (0.0080's phrasing) is
+corrected to "added when the code that needs it lands" - this
+feature (feat-1-bpmn-mcp-scaffold) ships no tools and no core-module
+boundary code, so zod is not a Phase 100 devDependency; whether the
+`@modelcontextprotocol/sdk`'s tool-registration helper pulls zod in
+as a peer dependency regardless is confirmed by the Task 100.165
+interop spike, and zod becomes a committed runtime dependency only in
+Phase 110 (or later), with the first code that actually validates a
+schema.
 
 <!-- Elicited 2026-10-24: the user's coding-convention questions (recorded as 0.0210-0.0260 with the options considered and the choice made) plus the user's monorepo decision (0.0270), which supersedes the layout position of 0.0040. -->
 
@@ -913,9 +952,20 @@ documentation (`README.md`, `AGENTS.md`, `CONTRIBUTING.md`,
 `CONSTITUTION.md`), `LICENSE` itself (the FSF text carries
 "changing it is not allowed" - a header would modify it), other
 JSON config, and generated files (`uv.lock`, `package-lock.json`,
-`node_modules/`, `dist/`, `coverage/`, `diagrams/`, `logs/`). The
-exemption list is part of the convention: a file needing a new
-exemption gets a recorded decision here first.
+`node_modules/`, `dist/`, `coverage/`, `logs/`). The exemption list is
+part of the convention: a file needing a new exemption gets a
+recorded decision here first.
+
+**Superseded in part (2026-10-29/30, feat-1-bpmn-mcp-scaffold
+planning):** `diagrams/` is dropped from the generated-files exemption
+list above - there is no `diagrams/` runtime directory (pair 0.0300);
+processes live under the committed `docs/prc/` path, which is already
+exempt as documentation under `docs/`. feat-1-bpmn-mcp-scaffold's
+Task 100.150 also adds explicit new-file-type coverage/exemptions to
+the drift gate for the file types this feature introduces
+(`.gitignore`, `.node-version`, `.env.example`, `.prettierrc`,
+`.prettierignore`, `eslint.config.js`, and, once it lands in Phase
+110, `apps/mcp-server/logging.json`), per REQ-004.
 
 **Enforcement (the machine home, CONSTITUTION principle 3).** A
 license-header drift gate - a vitest suite (first draft:
@@ -931,6 +981,45 @@ dependency. The existing in-scope files were retrofitted with the
 header on 2026-10-24 (`.pre-commit-config.yaml`, `.editorconfig`,
 `.github/workflows/ci.yml`, `.github/dependabot.yml`,
 `src/biz_dfch_bpmnmcp/__init__.py`, `pyproject.toml`).
+
+<!-- Elicited 2026-10-29/30 during the feat-1-bpmn-mcp-scaffold planning: dropping the registry file (1.0030/1.0080) raised the question of how a process is still identified and located without it. -->
+
+> **0.0300**: With the registry file (`diagrams/registry.json`)
+> dropped (see 1.0020/1.0030/1.0080's superseded markers below), how
+> are processes still identified and located on disk?
+
+**Superseding in part**, not dropping: the registry *file* and its
+`diagrams/` runtime directory go away, but UUID process
+identification does not - it moves into the filename. The adopted
+path model follows this repository's own **SpecMgr-style path
+convention**: a root directory, `BPMN_MCP_DOCS_DIR` (default
+`./docs`, REQ-010), with a **hardcoded per-type subdirectory** -
+`prc` - exactly the way `SPECMGR_DOCS_DIR` roots this repository's
+own `req`/`dec`/`qa` documents under matching hardcoded
+subdirectories. Each BPMN process therefore lives at
+`docs/prc/prc-<uuid>-<slug>.bpmn`, matching this repository's own
+`<type>-<uuid>-<slug>` filename convention for its specification
+documents (`req-...`, `dec-...`, `qa-...`) - the same convention this
+very Q&A document's own filename follows.
+
+Consequences: the **directory listing of `docs/prc/` is the
+inventory** - no separate registry file is needed to map a uuid to a
+path, because the uuid is already encoded in the filename a plain
+directory scan sees. UUID process identification (1.0070's "every
+process gets a UUID", 1.0080's `.../processes/<uuid>` preview URL
+scheme, 4.0010) is unaffected: the uuid still identifies the process,
+it is just read out of the filename instead of looked up in
+`registry.json`. What the registry file *did* additionally carry -
+the `lastKnownChecksum` and timestamps bookkeeping for the
+conditional-re-read-by-checksum mechanism (1.0020) - still needs a
+home; the concept of conditional re-read with a checksum is
+unaffected by this pair, but where that checksum cache now lives
+(in-memory only, a sidecar file, or recomputed each time) is left to
+the feature that implements the `prc` artifact core, not decided
+here. This feature (feat-1-bpmn-mcp-scaffold) implements none of this
+- it only resolves and reports the `BPMN_MCP_DOCS_DIR`/`prc` path
+(REQ-010) and records this scheme so the next feature does not have
+to re-elicit it.
 
 ## Functional Suitability
 
@@ -978,6 +1067,17 @@ not lock-protected in the first draft, so two concurrent operations
 on the same process can still race (last write wins); locking is a
 deferred improvement.
 
+**Superseded in part (2026-10-29/30, feat-1-bpmn-mcp-scaffold
+planning):** the registry and its `lastKnownChecksum`/timestamps
+bookkeeping are dropped (see 1.0030/1.0080's superseded markers and
+the new pair 0.0300) - there is no `registry.json` file. The
+high-level **concept** of a conditional re-read with a checksum -
+caching the in-memory tree and only re-parsing when the on-disk
+checksum changes - is unaffected and still stands; only where that
+checksum is now recorded (in-memory only, a sidecar file, or
+recomputed) is left open, to be settled by the feature that
+implements the `prc` artifact core.
+
 > **1.0030**: Where are diagrams stored, and can there be several of
 > them at once?
 
@@ -994,6 +1094,17 @@ checksum. The full design - UUIDs, registry, checksum-based
 conditional re-read, file as single source of truth - is recorded in
 1.0080; the original answer (one current diagram at a time, several
 diagrams out of scope) is superseded.
+
+**Superseded in part (2026-10-29/30, feat-1-bpmn-mcp-scaffold
+planning):** "several processes at the same time" is unaffected and
+still stands. Only the registry file goes away: there is no
+`diagrams/registry.json` and no `diagrams/` directory. Each process
+instead lives at `docs/prc/prc-<uuid>-<slug>.bpmn`
+(`BPMN_MCP_DOCS_DIR`'s hardcoded `prc` subdirectory, REQ-010, pair
+0.0300), so the uuid travels in the filename and a directory listing
+of `docs/prc/` is the inventory; `import` may still point at a file
+anywhere, and `export` still writes to an explicit path or to the
+process's own path (see 1.0070's corrected wording below).
 
 > **1.0040**: What does `parse` return to the agent?
 
@@ -1054,9 +1165,12 @@ the seven-tool Stage 1 surface of 1.0010, and adds MCP **resources**
   that is a scope change to record separately.
 - **An `export` tool** (working name - candidates "export" /
   "write"): takes a process UUID, serializes the diagram (after the
-  checksum re-read, 1.0080) to BPMN 2.0 XML, and writes it to the
-  registered path or to an explicitly given path (9.0010's overwrite
-  rule applies).
+  checksum re-read, 1.0080) to BPMN 2.0 XML, and writes it to its
+  own path under `docs/prc/` or to an explicitly given path (9.0010's
+  overwrite rule applies) - **fixed (2026-10-29/30,
+  feat-1-bpmn-mcp-scaffold planning)**: "registered path" is corrected
+  to the `prc-<uuid>-<slug>.bpmn` filename scheme (pair 0.0300),
+  since there is no registry to register a path in.
 
 Everything else of the 1.0010 surface (`create`, `change`,
 `validate`, `parse`, `preview`) is **deferred to later, separate
@@ -1100,6 +1214,20 @@ lock-protected; two concurrent operations on the same process can
 race (last write wins). Per-process locking (e.g. a lock file in the
 registry directory) is a deferred improvement, not first-draft
 scope.
+
+**Superseded in part (2026-10-29/30, feat-1-bpmn-mcp-scaffold
+planning):** part 2 ("Identification and registry") is superseded in
+its `registry.json`-specific detail only. UUID process identification
+and the `.../processes/<uuid>` preview URL scheme stand unchanged;
+there is simply no `diagrams/registry.json` file to carry them -
+`import` parses the file and reads or assigns the uuid from/to its
+filename (`prc-<uuid>-<slug>.bpmn` under `docs/prc/`, pair 0.0300)
+instead of looking it up in a registry, and the `config` MCP resource
+exposes the resolved `docs`/`prc` path (REQ-010) rather than a
+registry location. Part 1 (file as source of truth) and part 3 (the
+conditional-re-read-by-checksum concept) are unaffected and still
+stand; only where the checksum is now cached is left open to the
+feature that implements the `prc` artifact core.
 
 ## Performance Efficiency
 
