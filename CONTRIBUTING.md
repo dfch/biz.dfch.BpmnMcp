@@ -66,7 +66,8 @@ npm run format          # Prettier --write (QA 0.0280)
 npm run format:check    # Prettier --check (QA 0.0280)
 npm test                # vitest (QA 0.0060)
 npm test -- --coverage  # vitest + @vitest/coverage-v8 (QA 0.0260)
-npm run dev             # watch mode (QA 0.0050)
+npm run dev             # tsc --watch (QA 0.0050; a source edit triggers an
+                         # incremental rebuild without re-running the command)
 ```
 
 ---
@@ -106,15 +107,45 @@ what CI enforces (QA 0.0210).
 
 ## 5. Logging and telemetry
 
-- pino writes JSON lines to `logs/server.log` (daily rotation, seven
-  files kept) **and** to stderr; never to stdout - it is the MCP
-  protocol channel (QA 0.0070/0.0140/0.0150).
+The server expects to be started with its working directory (`cwd`)
+set to the consuming repository's root: every relative path below
+(`./docs`, `./logs`) resolves against that working directory, not
+against the package's own install location.
+
+- pino writes JSON lines to a rolling file under `./logs` (base name
+  `server`, daily rotation by default) **and** to stderr; never to
+  stdout - it is the MCP protocol channel (QA 0.0070/0.0140/0.0150,
+  REQ-006/REQ-008). `pino-roll`'s actual naming scheme (confirmed by
+  the feat-1 interop spike, Task 100.165): with no `dateFormat`
+  configured, rotated files are named `<base>.<count>.<ext>` (e.g.
+  `server.1.log`, `server.2.log`, ...) - there is no date segment by
+  default. The active file plus six rotated files (seven total) are
+  kept by default.
 - Configuration precedence: real environment > `.env` (local machine
-  values, gitignored) > `logging.json` (committed defaults) > built-in
-  defaults (QA 0.0160).
+  values, gitignored, loaded via `process.loadEnvFile()` - a missing
+  `.env` is not an error) > `logging.json`
+  (`apps/mcp-server/logging.json`, committed defaults - a missing file
+  is likewise not an error) > built-in defaults (QA 0.0160, REQ-009).
+- Logging environment variables (feat-1-bpmn-mcp-scaffold, REQ-008):
+  - `BPMN_MCP_LOG_FILE` - the rolling log file's base path (default
+    `logs/server`).
+  - `BPMN_MCP_LOG_LEVEL` - the minimum pino level (default `info`).
+  - `BPMN_MCP_LOG_ROTATE` - the rotation frequency: `daily`, `hourly`,
+    or a number of milliseconds (default `daily`).
+  - `BPMN_MCP_LOG_RETAIN` - how many files to keep **in total**,
+    active file included (default `7`; `pino-roll`'s own `limit.count`
+    option means "rotated files in addition to the active file", so
+    the server passes `BPMN_MCP_LOG_RETAIN - 1` through to it).
+- The documents root (feat-1-bpmn-mcp-scaffold, REQ-010):
+  `BPMN_MCP_DOCS_DIR` (default `./docs`) with the `prc` subdirectory
+  hardcoded, so BPMN processes live under `<BPMN_MCP_DOCS_DIR>/prc`
+  (resolved to an absolute path, reported by the `config` MCP
+  resource). Resolving the path never creates a directory.
 - Telemetry: OpenTelemetry API from day one (no-op until configured);
   set `OTEL_EXPORTER_OTLP_ENDPOINT` in `.env` to export to a local
-  collector (QA 0.0130/0.0170).
+  collector (QA 0.0130/0.0170). This feature's `config` MCP resource
+  always reports the OTel endpoint state as `"disabled"` - OTel
+  instrumentation itself is out of scope for feat-1-bpmn-mcp-scaffold.
 
 ---
 

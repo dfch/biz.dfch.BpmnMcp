@@ -46,6 +46,13 @@ export default tseslint.config(
           selector: 'import',
           format: ['camelCase', 'PascalCase'],
         },
+        {
+          // Object-literal keys that must be environment-variable
+          // names (e.g. test fixtures for `BPMN_MCP_LOG_LEVEL`) are
+          // exempt from the camelCase requirement above.
+          selector: 'objectLiteralProperty',
+          format: null,
+        },
       ],
 
       // Nothing in the process may write to stdout except the MCP

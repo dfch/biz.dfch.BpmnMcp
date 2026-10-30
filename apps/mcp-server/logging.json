@@ -1,0 +1,6 @@
+{
+  "logFile": "logs/server",
+  "logLevel": "info",
+  "logRotate": "daily",
+  "logRetain": 7
+}
