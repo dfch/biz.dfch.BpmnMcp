@@ -17,7 +17,6 @@ declare module 'pino-roll' {
   interface PinoRollOptions {
     file: string;
     frequency?: string | number;
-    size?: string | number;
     extension?: string;
     symlink?: boolean;
     limit?: PinoRollLimit;

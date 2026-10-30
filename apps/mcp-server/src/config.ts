@@ -51,7 +51,10 @@ interface LoggingConfigFile {
  * ships with the code rather than with the consuming repository (see
  * `paths.ts` for the `BPMN_MCP_DOCS_DIR` contrast). A missing file is
  * not an error: it falls through to an empty object, so every field
- * resolves to its built-in default.
+ * resolves to its built-in default. A file that exists but is not
+ * valid JSON *is* an error (REQ-009 exempts only the missing case):
+ * the thrown message names the file and keeps the original parse
+ * error as its `cause`.
  */
 function readLoggingConfigFile(packageRoot: string = PACKAGE_ROOT): LoggingConfigFile {
   const path = join(packageRoot, 'logging.json');
@@ -59,7 +62,16 @@ function readLoggingConfigFile(packageRoot: string = PACKAGE_ROOT): LoggingConfi
     return {};
   }
   const content = readFileSync(path, 'utf8');
-  return JSON.parse(content) as LoggingConfigFile;
+  try {
+    return JSON.parse(content) as LoggingConfigFile;
+  } catch (cause) {
+    throw new Error(
+      `failed to parse logging.json at ${path}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      {
+        cause,
+      },
+    );
+  }
 }
 
 /**

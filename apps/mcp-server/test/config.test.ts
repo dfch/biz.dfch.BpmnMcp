@@ -59,6 +59,21 @@ describe('loadLoggingConfig precedence (REQ-009)', () => {
     const result = loadLoggingConfig({}, tempDir);
     expect(result.logLevel).toBe('info');
   });
+
+  it('reports a malformed logging.json with a clear, file-naming error (not a bare SyntaxError)', () => {
+    writeFileSync(join(tempDir, 'logging.json'), '{ not valid JSON');
+    let caught: unknown = null;
+    try {
+      loadLoggingConfig({}, tempDir);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    const error = caught as Error;
+    expect(error.message).toContain('failed to parse logging.json');
+    expect(error.message).toContain(join(tempDir, 'logging.json'));
+    expect(error.cause).toBeInstanceOf(SyntaxError);
+  });
 });
 
 describe('.env loading and real-environment precedence (REQ-009)', () => {

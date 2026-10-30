@@ -49,7 +49,9 @@ async function buildFileStream(config: LoggingConfig): Promise<Writable> {
  * violate REQ-006 (nothing but MCP protocol frames on stdout), so
  * every destination is explicit here -- the second destination
  * defaults to `process.stderr` but is injectable so unit tests never
- * have to assert against real stderr capture.
+ * have to assert against real stderr capture (the real default is
+ * exercised at process level by `test/mcp-server.spawn.test.ts`,
+ * which spawns the built server with stderr piped).
  *
  * @param config - The effective logging configuration (`config.ts`).
  * @param secondaryStream - The second multistream destination

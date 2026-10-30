@@ -4,7 +4,7 @@ created: '2026-10-29T11:13:26.433+01:00'
 id: feat-1-bpmn-mcp-scaffold
 status: review
 type: feat
-updated: '2026-10-30T09:41:51.626+01:00'
+updated: '2026-10-30T10:06:30.000+01:00'
 version: 1.0.0
 ---
 
@@ -128,11 +128,20 @@ This section lists the artifacts this feature implements or is traced to (the "w
 - [x] Task 110.150: Verify, manually with the MCP inspector and temporary directories, whatever ACC-006 to ACC-009 and ACC-011 behavior Task 110.140 could not automate.
 - [x] Task 110.160: Update CONTRIBUTING (commands, variables, working-directory assumption) and open the pull request.
 
+#### Phase 120: Post-Implementation Review Fixes
+
+- [x] Task 120.100: Fix D1/I2 -- correct the `.env.example` `BPMN_MCP_LOG_ROTATE` comment to the three implemented modes (`daily`, `hourly`, or a number of milliseconds -- drop the stale "size") and drop the unused `size` field from the ambient `PinoRollOptions` in `pino-roll.d.ts`; verify `CONTRIBUTING.md` consistency (already correct -- no change).
+- [x] Task 120.110: Fix G1/I1 -- guard `readLoggingConfigFile()`'s `JSON.parse` in `config.ts` with a clear, file-naming error (the original parse error is kept as its `cause`; a missing `logging.json` still falls through silently to defaults, REQ-009).
+- [x] Task 120.120: Fix G2/I1 -- guard `readPackageMetadata()`'s `JSON.parse` in `package-metadata.ts` with the same clear, file-naming error.
+- [x] Task 120.125: Fix I3 -- JSDoc cross-reference in `createLogger()` (`logging.ts`) to `test/mcp-server.spawn.test.ts`, which exercises the real default stderr path at process level.
+- [x] Task 120.130: Cover the two new error paths in unit tests: a malformed `logging.json` (extend `config.test.ts`) and a malformed `package.json` (new hermetic `test/package-metadata.test.ts` using the function's injectable package-root argument against a temp dir) each produce the clear, file-naming error with the original `SyntaxError` chained as `cause` -- not a bare `SyntaxError`.
+- [x] Task 120.140: Run the full quality gate (`npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, `npm test -- --coverage`, `uvx pre-commit run --all-files`) and record the review's findings and their resolution in Progress.
+
 ## Progress
 
 ### Current Status
 
-**As of 2026-10-30**: Phases 100 and 110 complete; all gates green (lint, format:check, build, test with coverage, and `pre-commit run --all-files`, including a `fix:` commit for a pre-existing pre-commit repo-URL bug discovered during verification); all acceptance criteria satisfied locally, including ACC-002's local leg. Status set to `review`; the pull request is being opened next, with CI confirming ACC-002's remaining leg.
+**As of 2026-10-30**: Phases 100, 110, and 120 complete; all gates green (lint, format:check, build, test with coverage, and `pre-commit run --all-files`); all acceptance criteria satisfied locally, and ACC-002's CI leg is confirmed (PR #2 open, CI green). Phase 120 resolved every finding of the `feat-reviewer` post-implementation review (D1, G1, G2, I1, I2, I3 -- see the newest Updates entry) with no behavior change. Status stays `review`.
 
 ### Blockers
 
@@ -141,6 +150,18 @@ None.
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-10-30 10:06:30.000Z - Phase 120 complete: post-implementation review findings fixed
+
+A `feat-reviewer` pass over the Phase 100/110 implementation (branch `feat-1-scaffold`, PR #2, CI green) found no errors, one real discrepancy (D1), two minor gaps (G1, G2), and three improvements (I1, I2, I3). Phase 120 fixes all of them (Tasks 120.100-120.140). The implementation is canonical throughout: no runtime behavior change, no new acceptance criteria, status stays `review`. (Per this section's convention, the entry timestamps are local `+01:00` wall-clock times despite the `Z` suffix -- this entry's true instant is 2026-10-30 09:06:30Z.)
+
+- **D1 + I2 (stale "size" rotation mode)**: `.env.example` documented `BPMN_MCP_LOG_ROTATE` as "daily or size", but `parseRotationFrequency()` (`logging.ts`) implements only `daily`, `hourly`, or a numeric string parsed as milliseconds -- there is no size-based rotation anywhere (REQ-008 specifies daily, and the Task 100.165 interop spike confirmed the daily scheme). Corrected the `.env.example` comment to the three real modes and dropped the unused `size?: string | number` field from the ambient `PinoRollOptions` in `pino-roll.d.ts` (whose own JSDoc says the declaration "covers only the options this project uses"). Size-based rotation deliberately not implemented (out of plan scope). `CONTRIBUTING.md`'s Logging section was checked and already has the correct wording ("`daily`, `hourly`, or a number of milliseconds"), so it needed no change.
+- **G1 + I1 (unguarded `JSON.parse` of `logging.json`)**: a malformed `apps/mcp-server/logging.json` used to crash the server at startup with a raw `SyntaxError`. `readLoggingConfigFile()` (`config.ts`) now wraps the parse in a try/catch and throws a clear `Error` whose message names the file (`failed to parse logging.json at <path>: <original message>`) and which carries the original parse error as its `cause`. REQ-009's missing-file exemption is untouched: a missing `logging.json` still falls through silently to defaults (regression-covered by the existing test).
+- **G2 + I1 (unguarded `JSON.parse` of `package.json`)**: same pattern in `readPackageMetadata()` (`package-metadata.ts`) -- `failed to parse package.json at <path>: <original message>`, original error kept as `cause`.
+- **I3 (JSDoc cross-reference)**: `createLogger()`'s JSDoc (`logging.ts`) said the injectable `secondaryStream` means unit tests "never have to assert against real stderr capture" -- but `test/mcp-server.spawn.test.ts` does exercise the real default at process level (spawning the built server with stderr piped). A cross-reference line now keeps that fact visible to future readers.
+- **I1 (test coverage of the new error paths, Task 120.130)**: `config.test.ts` gains a test that a malformed `logging.json` yields the clear, file-naming error with the original `SyntaxError` chained as `cause` (not a bare `SyntaxError`); a new hermetic `test/package-metadata.test.ts` covers both the valid read and the malformed-`package.json` error path by pointing the function's injectable package-root argument at a temp dir -- the real component `package.json` is never touched, and no existing test was weakened.
+
+Quality gate (repository root): `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass -- 8 test files, 57 tests, coverage 87.93% statements (the new error paths each leave only their defensive `String(cause)` fallback branch uncovered; the only meaningfully uncovered file remains `index.ts`, exercised by the spawn-based tests instead of in-process instrumentation; the license-header drift gate now counts 32 files, up from 31, with the new test file). `uvx pre-commit run --all-files` passes all seven hooks.
 
 #### 2026-10-30 09:45:00.000Z - Orchestrator verification pass: pre-existing pre-commit bug fixed, ACC-002 closed
 
@@ -195,6 +216,10 @@ Feature plan drafted for the first pull request: scaffold with real gates (Phase
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-10-30 10:06:30.000Z - Stale docs corrected to the implemented rotation modes; no size rotation
+
+The `feat-reviewer` discrepancy D1 (`.env.example`'s "daily or size" wording plus the unused `size` field in `pino-roll.d.ts`) was resolved in favor of the implementation: REQ-008 specifies daily rotation and the Task 100.165 interop spike confirmed the daily scheme, so the docs and the ambient type were corrected to the three implemented modes (`daily`, `hourly`, or a number of milliseconds) and size-based rotation was left out of scope rather than implemented.
 
 #### 2026-10-29 16:00:00.000Z - Filename scheme carries the UUID; no registry file
 
