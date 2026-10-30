@@ -48,8 +48,13 @@ jobs:
       run: npm ci
 
     - name: Lint
-      # ESLint - Allman braces, naming, line width, complexity (QA 0.0220).
+      # ESLint - naming, line width, complexity (QA 0.0220/0.0280).
       run: npm run lint
+
+    - name: Format check
+      # Prettier --check - K&R braces, quotes, semicolons, trailing
+      # commas (QA 0.0280).
+      run: npm run format:check
 
     - name: Build (type-check gate)
       run: npm run build
