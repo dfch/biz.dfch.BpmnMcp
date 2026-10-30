@@ -30,35 +30,35 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      # uses: actions/checkout@v5
-      uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+      - name: Checkout
+        # uses: actions/checkout@v5
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
-    - name: Set up Node.js
-      # uses: actions/setup-node@v4 (v4.4.0)
-      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-      with:
-        node-version: 24
-        cache: npm
+      - name: Set up Node.js
+        # uses: actions/setup-node@v4 (v4.4.0)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: npm
 
-    - name: Install dependencies
-      # `npm ci` at the root - the strict, lockfile-based install of all
-      # workspaces (QA 0.0180/0.0270); requires the committed
-      # package-lock.json (QA 0.0080).
-      run: npm ci
+      - name: Install dependencies
+        # `npm ci` at the root - the strict, lockfile-based install of all
+        # workspaces (QA 0.0180/0.0270); requires the committed
+        # package-lock.json (QA 0.0080).
+        run: npm ci
 
-    - name: Lint
-      # ESLint - naming, line width, complexity (QA 0.0220/0.0280).
-      run: npm run lint
+      - name: Lint
+        # ESLint - naming, line width, complexity (QA 0.0220/0.0280).
+        run: npm run lint
 
-    - name: Format check
-      # Prettier --check - K&R braces, quotes, semicolons, trailing
-      # commas (QA 0.0280).
-      run: npm run format:check
+      - name: Format check
+        # Prettier --check - K&R braces, quotes, semicolons, trailing
+        # commas (QA 0.0280).
+        run: npm run format:check
 
-    - name: Build (type-check gate)
-      run: npm run build
+      - name: Build (type-check gate)
+        run: npm run build
 
-    - name: Run tests with coverage
-      # @vitest/coverage-v8 (QA 0.0260); report-only in the first draft.
-      run: npm test -- --coverage
+      - name: Run tests with coverage
+        # @vitest/coverage-v8 (QA 0.0260); report-only in the first draft.
+        run: npm test -- --coverage

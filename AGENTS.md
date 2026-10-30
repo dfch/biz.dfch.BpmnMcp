@@ -68,7 +68,7 @@ there.
   reimplemented:
   - `bpmn-moddle` — parses/serializes BPMN 2.0 XML (backs create,
     change, import, export, parse).
-  - `bpmnlint` — a *separate* library from bpmn-moddle, providing
+  - `bpmnlint` — a _separate_ library from bpmn-moddle, providing
     configurable, rule-based modeling validation (backs validate).
     bpmn-moddle alone only guarantees well-formed XML, not a
     sound diagram; see the Q&A for the full explanation.

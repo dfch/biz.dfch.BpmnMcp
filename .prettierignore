@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Ronald Rink, d-fens GmbH
+# SPDX-License-Identifier: AGPL-3.0-only
+
+node_modules/
+dist/
+coverage/
+package-lock.json
+uv.lock
+docs/
+session-feat-0-bpmn-ses_e9db.md
