@@ -45,6 +45,7 @@ The repository holds specifications and conventions, but no implementation. Ever
 - [x] ACC-011: `npm run dev` starts a watch build (a source file edit is picked up without re-running the command).
 - [x] ACC-012: The interop spike of Task 100.165 succeeds: `bpmn-moddle` and `bpmnlint` load under Node 24 from the ESM TypeScript workspace layout, `bpmnlint` finds `bpmnlint:recommended` with hoisted dependencies, the MCP SDK registration API and whether it needs `zod` as a peer are confirmed, `pino-roll`'s actual rotated-file naming and the `limit.count` value needed for "seven files total" are confirmed under Node 24 with a stderr multistream, and the bpmn-js dist-asset serving approach is confirmed; the result (pass, or which check failed) is recorded as a Progress → Updates entry, and no `feat:` commit is made (Phase 100's scaffold stays local/uncommitted beyond the earlier `chore:`/`ci:`/`docs:` commits) until this acceptance criterion is green.
 - [x] ACC-013: The repository's `.gitignore`, after Task 100.100, no longer references `diagrams/` anywhere, and `BPMN_MCP_DOCS_DIR`'s resolved path is the only runtime artifact location this feature's tests assert (besides `./logs`).
+- [x] ACC-014: As of this feature's completion, `npm audit` against the committed `package-lock.json` reports 0 vulnerabilities (the seven dev-only findings of the vitest 2.1.9 toolchain are resolved by Phase 130's vitest 5 bump), and the ACC-001 gate passes on vitest 5.
 
 ### Scope
 
@@ -96,6 +97,8 @@ Paths follow the SpecMgr model (QA 0.0300). `BPMN_MCP_DOCS_DIR` is a root with a
 
 Interop spike (Task 100.165, throwaway, run against the Phase 100 scaffold before any `feat:` commit -- see the commit-order paragraph above): load `bpmn-moddle` and `bpmnlint` under Node 24 from an ESM TypeScript project in the workspace layout; check that `bpmnlint` finds `bpmnlint:recommended` with hoisted dependencies; check the MCP SDK registration API and whether it needs `zod` as a peer; check `pino-roll`'s actual rotated-file naming (its documented `<base>.<date>.<count>.<ext>` scheme) and the `limit.count` value needed to keep seven files total (active file included) under a `pino.multistream` with a stderr stream on Node 24; and check how the bpmn-js dist assets can be served locally. A failure puts Option 1 of the decision record at risk; if any check fails, Task 100.165 stops, the failing check and its details are recorded as a Progress → Updates entry (and, if it blocks further work, as a Progress → Blockers entry), and no `feat:` commit is made.
 
+**Dependency audit remediation (Phase 130)**: after Phase 120, `npm audit` reported seven findings against the committed lockfile (3 moderate, 1 high, 3 critical) -- all confined to the dev-only vitest 2.1.9 test toolchain (`vitest`, `@vitest/coverage-v8`, `@vitest/mocker`, `vite`, `vite-node`, `esbuild`, `tinypool`); the runtime dependencies that ship (`@modelcontextprotocol/sdk`, `pino`, `pino-roll`, `zod`) were clean, and CI has no audit gate, so nothing was failing. No in-range fix existed (npm computed the fix as vitest 5.0.5, skipping the 3.x/4.x majors), so Phase 130 applies a targeted bump of the two root devDependencies to `^5.0.5` rather than `npm audit fix --force` (which would churn unrelated dependencies). Under vitest 5 / vite 8, `esbuild` and `tinypool` leave the tree entirely (vite 8 moves to `rolldown`/`lightningcss`), resolving their advisories by removal; the suite ran unchanged (57 tests, no config or test-code modifications). This is vulnerability remediation of existing dev dependencies -- not the dependency _license_ gate, which remains explicitly out of scope (a deferred feature, where a future `npm audit` CI step could also land).
+
 ### Related Decisions
 
 This section lists the artifacts this feature implements or is traced to (the "why", for anyone auditing the implementation); see Dependencies above for what this feature needs before it can start or is blocked on.
@@ -137,11 +140,17 @@ This section lists the artifacts this feature implements or is traced to (the "w
 - [x] Task 120.130: Cover the two new error paths in unit tests: a malformed `logging.json` (extend `config.test.ts`) and a malformed `package.json` (new hermetic `test/package-metadata.test.ts` using the function's injectable package-root argument against a temp dir) each produce the clear, file-naming error with the original `SyntaxError` chained as `cause` -- not a bare `SyntaxError`.
 - [x] Task 120.140: Run the full quality gate (`npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, `npm test -- --coverage`, `uvx pre-commit run --all-files`) and record the review's findings and their resolution in Progress.
 
+#### Phase 130: Dependency Audit Remediation (vitest 5)
+
+- [x] Task 130.100: Bump the root devDependencies `vitest` and `@vitest/coverage-v8` from `^2.1.9` to `^5.0.5` (a targeted install, not `npm audit fix --force`) and regenerate `package-lock.json`; vitest 5 / vite 8 drop `esbuild` and `tinypool` from the tree entirely, so their advisories are resolved by removal.
+- [x] Task 130.110: Run the full quality gate from the repository root (`npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, `npm test -- --coverage`, `uvx pre-commit run --all-files`), confirm `npm audit` reports 0 vulnerabilities, and record that no vitest 5 breakage surfaced in `vitest.config.ts` or test code.
+- [x] Task 130.120: Record the outcome in Progress (Updates + Decisions Made), mark ACC-014, and push to PR #2.
+
 ## Progress
 
 ### Current Status
 
-**As of 2026-10-30**: Phases 100, 110, and 120 complete; all gates green (lint, format:check, build, test with coverage, and `pre-commit run --all-files`); all acceptance criteria satisfied locally, and ACC-002's CI leg is confirmed (PR #2 open, CI green). Phase 120 resolved every finding of the `feat-reviewer` post-implementation review (D1, G1, G2, I1, I2, I3 -- see the newest Updates entry) with no behavior change. Status stays `review`.
+**As of 2026-10-30**: Phases 100, 110, 120, and 130 complete; all gates green (lint, format:check, build, test with coverage, and `pre-commit run --all-files`); `npm audit` reports 0 vulnerabilities (Phase 130's vitest 5 bump resolved the seven dev-only findings); all acceptance criteria satisfied locally, and ACC-002's CI leg is confirmed (PR #2 open, CI green). Phase 120 resolved every finding of the `feat-reviewer` post-implementation review (D1, G1, G2, I1, I2, I3 -- see the Phase 120 Updates entry) with no behavior change. Status stays `review`.
 
 ### Blockers
 
@@ -150,6 +159,12 @@ None.
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-10-30 19:17:50.000Z - Phase 130 complete: vitest 5 bump resolves all seven npm audit findings
+
+After Phase 120, `npm audit` against the committed lockfile reported seven findings (3 moderate, 1 high, 3 critical), all confined to the dev-only vitest 2.1.9 test toolchain (`vitest`, `@vitest/coverage-v8`, `@vitest/mocker`, `vite`, `vite-node`, `esbuild`, `tinypool`); the shipping runtime dependencies (`@modelcontextprotocol/sdk`, `pino`, `pino-roll`, `zod`) were clean. No in-range fix existed (npm computed the fix as vitest 5.0.5, skipping the 3.x/4.x majors), so Task 130.100 applied a targeted bump of the two root devDependencies to `^5.0.5` (a direct pair install initially hit ERESOLVE against the lockfile-pinned 2.1.9 peer, so the pair was removed from manifest/lockfile and re-added in a single resolution pass -- no `npm audit fix --force`, which would churn unrelated dependencies). The regenerated `package-lock.json` shrinks by roughly 700 lines: vitest 5 / vite 8 drop `esbuild` and `tinypool` from the tree entirely (vite 8 moves to `rolldown`/`lightningcss`), resolving their advisories by removal.
+
+Quality gate (repository root, fresh `npm ci` -- which this time also emitted no install-script warning, esbuild's postinstall having left the tree): `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass -- 8 test files, 57 tests, statements coverage 96.42% (up from 87.93% under vitest 2's v8 instrumentation; report-only, no threshold), and the printed coverage summary re-proves the `npm test -- --coverage` argument forwarding (REQ-002/ACC-001). `npm audit` reports 0 vulnerabilities (ACC-014), and `uvx pre-commit run --all-files` passes all seven hooks. No vitest 5 breakage surfaced: `vitest.config.ts` and all test code run unchanged. Committed as `chore: bump vitest and @vitest/coverage-v8 to 5.0.5` (`f7d3618`, manifest + lockfile only) and pushed to PR #2; CI re-runs on the push. (Per this section's convention, the entry timestamp is the local `+01:00` wall-clock time despite the `Z` suffix -- this entry's true instant is 2026-10-30 18:17:50Z.)
 
 #### 2026-10-30 10:06:30.000Z - Phase 120 complete: post-implementation review findings fixed
 
@@ -216,6 +231,10 @@ Feature plan drafted for the first pull request: scaffold with real gates (Phase
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-10-30 19:17:50.000Z - vitest 5 via a targeted devDependency bump, not `npm audit fix --force`
+
+The seven npm audit findings (all in the dev-only test toolchain) were remediated by bumping the two root devDependencies (`vitest`, `@vitest/coverage-v8`) to `^5.0.5` rather than running `npm audit fix --force`: the targeted bump confines the lockfile diff to the test-toolchain slice, churns no unrelated dependencies, and the suite needed no changes (57 tests pass as-is under vitest 5). A CI `npm audit` gate is deliberately not added in this feature -- it belongs to the deferred dependency-gate work (Explicitly Out Of Scope), alongside the dependency _license_ gate.
 
 #### 2026-10-30 10:06:30.000Z - Stale docs corrected to the implemented rotation modes; no size rotation
 
