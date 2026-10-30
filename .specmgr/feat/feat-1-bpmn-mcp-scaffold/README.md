@@ -2,9 +2,9 @@
 classification: null
 created: '2026-10-29T11:13:26.433+01:00'
 id: feat-1-bpmn-mcp-scaffold
-status: planning
+status: review
 type: feat
-updated: '2026-10-30T08:55:25.860+01:00'
+updated: '2026-10-30T09:41:51.626+01:00'
 version: 1.0.0
 ---
 
@@ -33,7 +33,7 @@ The repository holds specifications and conventions, but no implementation. Ever
 ### Acceptance Criteria
 
 - [x] ACC-001: On a clean clone, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass from the repository root, and the last command's output includes a coverage summary (proving the flag reached vitest, not npm).
-- [ ] ACC-002: The CI workflow is green on the pull request, and `pre-commit run --all-files` passes locally.
+- [x] ACC-002: The CI workflow is green on the pull request, and `pre-commit run --all-files` passes locally. (Local `pre-commit run --all-files` verified green by the orchestrator, including a `fix:` commit correcting a pre-existing `.pre-commit-config.yaml` repo-URL bug that predated this feature; CI-on-the-pull-request leg confirmed once the PR is open.)
 - [x] ACC-003: A deliberately header-less in-scope file, staged but not committed (`git add` only), makes the drift gate fail; the exempt paths of QA 0.0290 are not asserted.
 - [x] ACC-004: A temporary `console.log` in a source file makes `npm run lint` fail.
 - [x] ACC-005: A function with a cyclomatic complexity above 10 makes `npm run lint` fail.
@@ -132,7 +132,7 @@ This section lists the artifacts this feature implements or is traced to (the "w
 
 ### Current Status
 
-**As of 2026-10-30**: Phase 110 (the walking skeleton) complete; all gates green, all acceptance criteria for this feature satisfied except ACC-002 (CI/pre-commit, verified by the orchestrator on the pull request). Ready for review.
+**As of 2026-10-30**: Phases 100 and 110 complete; all gates green (lint, format:check, build, test with coverage, and `pre-commit run --all-files`, including a `fix:` commit for a pre-existing pre-commit repo-URL bug discovered during verification); all acceptance criteria satisfied locally, including ACC-002's local leg. Status set to `review`; the pull request is being opened next, with CI confirming ACC-002's remaining leg.
 
 ### Blockers
 
@@ -141,6 +141,10 @@ None.
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-10-30 09:45:00.000Z - Orchestrator verification pass: pre-existing pre-commit bug fixed, ACC-002 closed
+
+Independently re-ran, from a clean `npm ci`, all five gates (`lint`, `format:check`, `build`, `test -- --coverage`) and `uvx pre-commit run --all-files` after Phase 110 landed. Discovered a pre-existing bug in `.pre-commit-config.yaml` (present since the repository's initial `87e3ff4` setup commit, predating this feature): the standard hygiene hooks (`check-yaml`, `end-of-file-fixer`, `trailing-whitespace`) were declared under `repo: https://github.com/pre-commit/pre-commit` at `rev: v4.7.0`, but those hook ids actually live in the separate `pre-commit/pre-commit-hooks` repository -- `pre-commit run --all-files` failed outright with "`check-yaml` is not present in repository...". Corrected the `repo:` URL to `pre-commit/pre-commit-hooks`; `v4.7.0` turned out not to be a real tag of that repo either (its tags jump v4.6.0 -> v5.0.0), so pinned to the closest real tag, `v4.6.0`, with an inline comment recording the correction. Committed as a standalone `fix:` commit (`67549cb`). Re-ran `uvx pre-commit run --all-files` -- all seven hooks (the three hygiene hooks plus the four local `npm run lint`/`format:check`/`build`/`test` gates) now pass. ACC-002 is closed for its local-verification leg; the CI-on-the-pull-request leg is confirmed once the PR is open. All other acceptance criteria (ACC-001, ACC-003 through ACC-013) independently re-verified green. Ready to move the feature to `review` status and open the pull request.
 
 #### 2026-10-30 09:40:00.000Z - Phase 110 complete: walking skeleton MCP server, gates green
 
