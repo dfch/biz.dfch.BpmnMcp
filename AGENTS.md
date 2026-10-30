@@ -33,10 +33,13 @@ prefixes if they are not in an obvious `docs/` folder.
 - **1 implementation Q&A document** (`qa-*.md`, 2026-10-23): the
   first-draft implementation decisions for GitHub issue #1 — the seven
   MCP tools (create, change, import, export, validate, parse,
-  preview), the in-memory current diagram, `diagrams/` storage,
-  grid-placed BPMN DI, the localhost:8080 read-only bpmn-js Viewer
-   preview, `.bpmnlintrc` with `bpmnlint:recommended`, the
-   npm/tsc/vitest toolchain, and the AGPLv3 license.
+  preview), the file-backed source of truth under `docs/prc/`
+  (`BPMN_MCP_DOCS_DIR`'s hardcoded `prc` subdirectory, each process
+  named `prc-<uuid>-<slug>.bpmn`, matching this repository's own
+  `<type>-<uuid>-<slug>` document convention), grid-placed BPMN DI,
+  the localhost:8080 read-only bpmn-js Viewer preview, `.bpmnlintrc`
+  with `bpmnlint:recommended`, the npm/tsc/vitest toolchain, and the
+  AGPLv3 license.
 
 These came out of two interactive sessions with an AI coding agent:
 the research and planning session (2026-10-22) behind the decision
