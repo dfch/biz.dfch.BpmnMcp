@@ -1417,12 +1417,14 @@ vitest's `Assertion<R, T>` declaration exactly) that types
 **Dependency audit note (minimatch)**: `archunit` depends
 transitively on `minimatch` (declared `^10.0.1`). The advisory
 GHSA-g3hv-75wg-m249 (moderate, a potential denial of service via
-globparts amplification) is fixed in `minimatch` 11.0.1, released
-2026-10-27 -- after feat-1's audit run -- so the pre-existing
-`minimatch` copies (the eslint subtree at 3.1.5,
-typescript-estree at 10.2.6) were already flagged at that point,
-independent of `archunit`. The root `package.json` `overrides`
-therefore pin `minimatch` to 11.0.1 across the tree (verified
+globparts amplification) is fixed in `minimatch` 11.0.1 (released
+2026-10-27); the advisory itself was published *after* feat-1's
+audit run (2026-10-30, which reported 0 vulnerabilities against
+the then-committed lock file) -- so the pre-existing `minimatch`
+copies (the eslint subtree at 3.1.5, typescript-estree at 10.2.6)
+were flagged by the new advisory independently of `archunit`.
+The root `package.json` `overrides` therefore pin `minimatch`
+to 11.0.1 across the tree (verified
 API-compatible at all three call sites: the named `minimatch()`
 function and the `Minimatch` class, with identical signatures in
 10.2.6 and 11.0.1) **except archunit's own copy**, which a nested
@@ -1432,8 +1434,13 @@ and no `minimatch`-11-compatible `archunit` release exists yet
 (2.5.4, 2026-09-13, is the latest). Known residual: one moderate
 finding (`archunit` -> `minimatch` 10.2.6), tracked here until an
 `archunit` release compatible with `minimatch` 11 ships and the
-nested override is dropped. `npm audit fix --force` would downgrade
-`archunit` to 2.1.31 (a breaking change) -- rejected, per the
+nested override is dropped. The practical risk of the residual is
+low: the vulnerable code path requires attacker-crafted glob
+patterns, and the consumers here are dev-only (eslint,
+typescript-estree, archunit) with glob inputs coming from this
+repository's own committed code -- no untrusted input reaches
+`minimatch`. `npm audit fix --force` would downgrade `archunit` to
+2.1.31 (a breaking change) -- rejected, per the
 targeted-remediation precedent of feat-1's Phase 130.
 
 ## Flexibility
