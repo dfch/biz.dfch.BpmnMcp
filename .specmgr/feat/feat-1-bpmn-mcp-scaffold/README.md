@@ -2,9 +2,9 @@
 classification: null
 created: '2026-10-29T11:13:26.433+01:00'
 id: feat-1-bpmn-mcp-scaffold
-status: review
+status: done
 type: feat
-updated: '2026-10-30T10:06:30.000+01:00'
+updated: '2026-10-31T18:32:22.608+01:00'
 version: 1.0.0
 ---
 
@@ -159,6 +159,10 @@ None.
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-10-31 18:31:38.757+01:00 - PR #2 merged, feature done
+
+PR #2 (branch `feat-1-scaffold`) was merged into `dev` on 2026-10-30 (commit `7ab6fa2`), closing ACC-002's CI-on-the-pull-request leg. All acceptance criteria were verified during Phases 100 to 130 (see the update entries below). Status moved from `review` to `done`; the local branch `feat-1-scaffold` was deleted after the merge.
 
 #### 2026-10-30 19:17:50.000Z - Phase 130 complete: vitest 5 bump resolves all seven npm audit findings
 
