@@ -99,6 +99,11 @@ specification (slimmed 2026-10-24, QA 0.0210):
   `eslint.config.js` `naming-convention`.
 - **Pre/postconditions**: QA 0.0200/0.0260 - the in-house assertion
   module.
+- **Architecture tests** (archunit: no cycles in `src`, no
+  production-to-test dependencies, the core-vs-adapter layering):
+  CONSTITUTION §4, QA 7.0030 - gate: the vitest architecture suite
+  (`apps/mcp-server/test/architecture.test.ts`) running in
+  `npm test`.
 
 If this index and a machine config disagree, the config wins - it is
 what CI enforces (QA 0.0210).

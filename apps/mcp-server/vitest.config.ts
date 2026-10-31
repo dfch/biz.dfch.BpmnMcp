@@ -6,6 +6,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
+    // Required by the archunit `toPassAsync()` Vitest matcher
+    // (CONSTITUTION §4, QA 7.0030).
+    globals: true,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

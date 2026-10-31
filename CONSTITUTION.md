@@ -50,3 +50,16 @@ convention that exists only in prose is drift-prone and does not
 count, and CI plus pre-commit are the authoritative gates (QA
 0.0210/0.0180/0.0190). When a document and a machine config
 disagree, the config wins — it is what CI enforces.
+
+## 4. Architecture as tested code
+
+The architecture of the code — the dependency directions between
+modules, the layering of the BPMN core against its protocol
+adapters, and the absence of circular dependencies — is not prose;
+it is tested. The architectural rules are architecture unit tests
+written with `archunit` (ArchUnitTS) in the component's vitest
+suite, and they fail the build when the code violates them (QA
+7.0030). New modules must satisfy the existing rules; new rules
+are added to the same suite by a recorded decision. Machine home:
+the architecture suite (`apps/mcp-server/test/architecture.test.ts`),
+running in CI and pre-commit through the `test` gate.

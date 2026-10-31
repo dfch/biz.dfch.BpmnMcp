@@ -1356,6 +1356,86 @@ together with an overall status (no findings / N findings). Custom
 rules remain possible by extending the same config — which is what the
 "configurable" requirement demands.
 
+<!-- Elicited 2026-10-31 during the feat-2-prc-import-export planning: the user requested ArchUnit-style architecture unit tests for the TypeScript codebase, recorded as a constitution principle. -->
+
+> **7.0030**: How are the architectural constraints (module
+> layering, dependency directions, circular dependencies) enforced?
+
+Decision (user, 2026-10-31; CONSTITUTION principle 4): the
+architecture is tested, not written about. The architectural rules
+are **architecture unit tests** in the component's vitest suite,
+written with **`archunit` (ArchUnitTS)** -- the npm package
+`archunit` (MIT), an architecture-testing library for
+TypeScript/JavaScript, inspired by the Java ArchUnit library but not
+affiliated with it. The rules run under the existing `npm test`
+gate (CI + pre-commit), so no new CI step is introduced (principle
+3: the machine home of this convention is the test gate).
+
+Options considered: (1) `archunit` (ArchUnitTS) -- an
+ArchUnit-style rule DSL over the project's TypeScript module graph
+(`dependOnFiles` for intra-project boundaries, `haveNoCycles` for
+cycles, content-based `adhereTo` custom conditions for external
+dependencies), integrating with vitest through the `toPassAsync()`
+matcher (which requires `globals: true` in `vitest.config.ts`);
+(2) `dependency-cruiser` -- a standalone config + CLI, a new gate
+step; (3) ESLint import rules -- lint-level, weaker for
+graph-level rules; (4) a hand-rolled import scanner -- fragile, and
+re-implements what (1) and (2) already solve. Chosen: (1), at the
+user's explicit request ("archunit") -- the closest TypeScript
+equivalent of the ArchUnit-style architecture tests requested.
+
+The initial rule set (machine home:
+`apps/mcp-server/test/architecture.test.ts`) encodes the layering
+decided in 7.0010 (the core module with thin protocol adapters, the
+Stage 2 split kept possible) and the boundary decisions of
+0.0300/1.0080 (the core owns the filesystem, the adapters never
+touch it): no cycles in `src/**`; `src/**` does not depend on
+`test/**`; `src/prc/**` (the core, landing in
+feat-2-prc-import-export) does not depend on the adapter files
+`src/server.ts`/`src/index.ts` and does not import
+`@modelcontextprotocol/sdk`; the adapters do not import `node:fs`.
+Rules targeting modules that do not exist yet run with
+`allowEmptyTests` and bite as soon as the module lands. At
+introduction, deliberate violations (a cycle, an SDK import in the
+core, a `node:fs` import in an adapter) were verified to fail their
+rules, per the drift-gate culture of 0.0290/ACC-003.
+
+**Integration details.** `toPassAsync()` requires vitest's
+`globals: true` -- archunit extends the *global* `expect` at import
+time and throws a configuration error when the global `expect` is
+absent -- so `apps/mcp-server/vitest.config.ts` carries
+`globals: true`. The suite keeps the repository's convention of
+explicit `import { describe, expect, it } from 'vitest'` (the
+imported `expect` is the same instance the global points to, so the
+extended matcher is available through it). The matcher's types are
+declared by archunit against a global `VitestAssertion` interface
+that vitest's own `Assertion` does not reference, so the suite
+carries a module augmentation (`declare module 'vitest'`, mirroring
+vitest's `Assertion<R, T>` declaration exactly) that types
+`toPassAsync()` under `strict`.
+
+**Dependency audit note (minimatch)**: `archunit` depends
+transitively on `minimatch` (declared `^10.0.1`). The advisory
+GHSA-g3hv-75wg-m249 (moderate, a potential denial of service via
+globparts amplification) is fixed in `minimatch` 11.0.1, released
+2026-10-27 -- after feat-1's audit run -- so the pre-existing
+`minimatch` copies (the eslint subtree at 3.1.5,
+typescript-estree at 10.2.6) were already flagged at that point,
+independent of `archunit`. The root `package.json` `overrides`
+therefore pin `minimatch` to 11.0.1 across the tree (verified
+API-compatible at all three call sites: the named `minimatch()`
+function and the `Minimatch` class, with identical signatures in
+10.2.6 and 11.0.1) **except archunit's own copy**, which a nested
+override keeps at 10.2.6: `archunit` 2.5.4 calls
+`minimatch.makeRe()`, which 11.0.1 removed from its public exports,
+and no `minimatch`-11-compatible `archunit` release exists yet
+(2.5.4, 2026-09-13, is the latest). Known residual: one moderate
+finding (`archunit` -> `minimatch` 10.2.6), tracked here until an
+`archunit` release compatible with `minimatch` 11 ships and the
+nested override is dropped. `npm audit fix --force` would downgrade
+`archunit` to 2.1.31 (a breaking change) -- rejected, per the
+targeted-remediation precedent of feat-1's Phase 130.
+
 ## Flexibility
 
 > **8.0010**: Any flexibility or extensibility requirements elicited?

@@ -108,7 +108,9 @@ convention index). Machine enforcement: Prettier (the formatter:
 K&R braces, 2-space indent, 120-char lines, single quotes) +
 ESLint/typescript-eslint (the linter: naming,
 cyclomatic-complexity measurement) + `eslint-config-prettier` +
-`.editorconfig` + `tsconfig` (`strict`). Every source file starts
+`.editorconfig` + `tsconfig` (`strict`) + `archunit` (the
+architecture test suite: no cycles, the core-vs-adapter layering --
+CONSTITUTION §4, QA 7.0030). Every source file starts
 with the two-line SPDX header (`SPDX-FileCopyrightText` +
 `SPDX-License-Identifier: AGPL-3.0-only`); write it in every new
 file — a license-header drift gate (vitest) fails on any in-scope
