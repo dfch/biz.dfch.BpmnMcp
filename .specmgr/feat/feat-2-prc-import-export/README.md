@@ -4,7 +4,7 @@ created: '2026-10-31T18:47:11.018+01:00'
 id: feat-2-prc-import-export
 status: planning
 type: feat
-updated: '2026-10-31T21:24:46.338+01:00'
+updated: '2026-10-31T23:52:18.000+01:00'
 version: 1.0.0
 ---
 
@@ -117,14 +117,14 @@ The three open points that pairs 0.0300/1.0020 explicitly left to this feature a
 
 #### Phase 100: The `prc` Artifact Core
 
-- [ ] Task 100.100: Add `bpmn-moddle` (10.3.x per the feat-1 spike) as a committed runtime dependency of `apps/mcp-server`, regenerate `package-lock.json`, and verify `npm audit` reports no findings other than the documented residual (QA 7.0030) and the named ESM import compiles under the workspace layout.
-- [ ] Task 100.105: Create the in-house assertion module `src/assertions.ts` per pair 0.0260 (`precondition`/`postcondition` with `asserts` signatures, throwing an `Error` carrying the given message on a falsy condition) and its unit tests (ACC-010).
-- [ ] Task 100.110: Implement `src/prc/filename.ts` (build/parse `prc-<uuid>-<slug>.bpmn`, slugify with the process-`id` to filename-stem fallback (including a non-ASCII `id` case pinning the `\p{L}`/`\p{N}` class), UUID v4, non-conforming-name rejection) and its unit tests (REQ-002).
-- [ ] Task 100.115: Create the `.bpmn` fixture set under `apps/mcp-server/test/fixtures/` (a minimal process with an `id` + BPMNDI, a process without an `id`, a malformed XML file) and verify the license-header drift gate and Prettier skip them with no config change (Design Notes, "Gates and fixtures").
-- [ ] Task 100.120: Implement `src/prc/moddle.ts` (the `BpmnModdle` singleton, parse with structured error wrapping, serialize with `format: true`) and its unit tests (parse, serialize, re-parse round-trip of the fixtures; REQ-001/REQ-006).
-- [ ] Task 100.130: Implement `src/prc/inventory.ts` (the directory scan, the conforming filter, missing directory to empty inventory, no directory creation) and its unit tests against temporary directories (REQ-003).
-- [ ] Task 100.140: Implement `src/prc/store.ts`: the cache `Map` + the session source-path map, the conditional SHA-256 re-read with the out-of-band re-read note (tool result + structured log), the import operation (copy into `prc/`, reuse, structured errors), the export operation (own path or explicit path, atomic write, checksum update, the REQ-006 postcondition), using the REQ-009 assertions; unit tests for each, including the ACC-004/ACC-006/ACC-009 cases and the cross-process `export` overwrite case (REQ-008).
-- [ ] Task 100.150: Remove feat-1's throwaway `src/placeholder.ts` and `test/placeholder.test.ts`, and run all gates (lint, format:check, build, test), fixing findings.
+- [x] Task 100.100: Add `bpmn-moddle` (10.3.x per the feat-1 spike) as a committed runtime dependency of `apps/mcp-server`, regenerate `package-lock.json`, and verify `npm audit` reports no findings other than the documented residual (QA 7.0030) and the named ESM import compiles under the workspace layout.
+- [x] Task 100.105: Create the in-house assertion module `src/assertions.ts` per pair 0.0260 (`precondition`/`postcondition` with `asserts` signatures, throwing an `Error` carrying the given message on a falsy condition) and its unit tests (ACC-010).
+- [x] Task 100.110: Implement `src/prc/filename.ts` (build/parse `prc-<uuid>-<slug>.bpmn`, slugify with the process-`id` to filename-stem fallback (including a non-ASCII `id` case pinning the `\p{L}`/`\p{N}` class), UUID v4, non-conforming-name rejection) and its unit tests (REQ-002).
+- [x] Task 100.115: Create the `.bpmn` fixture set under `apps/mcp-server/test/fixtures/` (a minimal process with an `id` + BPMNDI, a process without an `id`, a malformed XML file) and verify the license-header drift gate and Prettier skip them with no config change (Design Notes, "Gates and fixtures").
+- [x] Task 100.120: Implement `src/prc/moddle.ts` (the `BpmnModdle` singleton, parse with structured error wrapping, serialize with `format: true`) and its unit tests (parse, serialize, re-parse round-trip of the fixtures; REQ-001/REQ-006).
+- [x] Task 100.130: Implement `src/prc/inventory.ts` (the directory scan, the conforming filter, missing directory to empty inventory, no directory creation) and its unit tests against temporary directories (REQ-003).
+- [x] Task 100.140: Implement `src/prc/store.ts`: the cache `Map` + the session source-path map, the conditional SHA-256 re-read with the out-of-band re-read note (tool result + structured log), the import operation (copy into `prc/`, reuse, structured errors), the export operation (own path or explicit path, atomic write, checksum update, the REQ-006 postcondition), using the REQ-009 assertions; unit tests for each, including the ACC-004/ACC-006/ACC-009 cases and the cross-process `export` overwrite case (REQ-008).
+- [x] Task 100.150: Remove feat-1's throwaway `src/placeholder.ts` and `test/placeholder.test.ts`, and run all gates (lint, format:check, build, test), fixing findings.
 
 #### Phase 110: The `import` and `export` MCP Tools
 
@@ -139,7 +139,7 @@ The three open points that pairs 0.0300/1.0020 explicitly left to this feature a
 
 ### Current Status
 
-**As of 2026-10-31**: planned. The spec is drafted from QA pair 1.0070's first increment and the three design decisions the user confirmed on 2026-10-31 (in-memory checksum cache, copy-on-import, process-`id` slug). Awaiting the user's review; no implementation has started.
+**As of 2026-10-31**: Phase 100 (the `prc` artifact core) is complete. `bpmn-moddle` 10.3.1 is a committed runtime dependency (REQ-001), the assertion module (REQ-009) and the four `src/prc/` modules -- filename scheme, moddle wrappers, inventory scan, and the cache + conditional-re-read store with `import`/`export` -- have landed with their unit tests and the `.bpmn` fixture set, feat-1's placeholders are removed, and the full quality gate is green (13 test files / 131 tests). Next is Phase 110 (the `import`/`export` MCP tool wiring).
 
 ### Blockers
 
@@ -148,6 +148,20 @@ None.
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-10-31 23:52:18+01:00 - Phase 100 complete
+
+The `prc` artifact core (Tasks 100.100–100.150) landed, all seven quality gates green from the repository root:
+
+- **Dependency (Task 100.100)**: `bpmn-moddle` 10.3.1 (the exact version of the feat-1 spike) added to `apps/mcp-server/package.json`, `package-lock.json` regenerated, `npm audit` unchanged from baseline (only the documented archunit → minimatch 10.2.6 residual). Because the package's `exports["."]` ships no `types` condition, the named ESM import compiles via a new ambient declaration `src/prc/bpmn-moddle.d.ts` (maps `BpmnModdle` onto the typed `moddle` base class -- bpmn-moddle's own locked dependency -- plus the `fromXML`/`toXML` signatures, with a no-arg `constructor()` overriding the base).
+- **Assertions (Task 100.105)**: `src/assertions.ts` (`precondition`/`postcondition` with `asserts condition` signatures) + `test/assertions.test.ts` (falsy-condition throw with the given message for both helpers, truthy pass-through, compile-time narrowing at call sites).
+- **Core modules (Tasks 100.110–100.140)**: `src/prc/filename.ts` (build/parse `prc-<uuid>-<slug>.bpmn`, the `\p{L}`/`\p{N}` slugify with non-ASCII test cases, UUID v4, non-conforming-name rejection), `src/prc/moddle.ts` (the singleton, parse with the structured `BpmnParseError` wrapping, serialize with `format: true`, the process-`id` extraction, and the metamodel-driven element-inventory walk used by both postconditions), `src/prc/inventory.ts` (the conforming directory scan; missing directory → empty inventory, no creation), and `src/prc/store.ts` (the in-memory cache `Map` + session source-path map, the conditional SHA-256 re-read with the out-of-band note in result and structured log, `import` (copy-on-import, reuse, structured errors) and `export` (own/explicit path, atomic write, checksum update, the REQ-006 postcondition), preconditions at entry / postconditions at exit, structured results without any SDK type). Unit tests: `test/prc/{filename,moddle,inventory,store}.test.ts`, covering the ACC-002/003/004/005/006/009 cases, the REQ-008 cross-process `export` overwrite, the checksum-update no-spurious-re-read case, and a real-pino-logger structural-compatibility case.
+- **Fixtures (Task 100.115)**: `test/fixtures/{order-process,no-process-id,malformed}.bpmn` (a minimal process with `id` + full BPMNDI, a process without `id`, truncated XML). Verified with no config change: the license-header drift gate skips them (unrecognized extension → no comment prefix) and Prettier's matched set excludes them (no parser for `.bpmn`); `prettier --check .` and the drift suite both pass with them committed.
+- **Placeholder removal (Task 100.150)**: `src/placeholder.ts` and `test/placeholder.test.ts` deleted; the deletions and all new files are staged (`git add`) so the `git ls-files`-based license gate and `pre-commit run --all-files` see the correct file set -- nothing committed.
+- **Gate evidence**: `npm ci` (exit 0); `npm run lint` (clean, after refactoring `collectElementInventory` to keep the `complexity` ≤ 10 threshold); `npm run format:check` (all matched files OK); `npm run build` (type-check + emit, clean rebuild); `npm test -- --coverage` (13 files / 131 tests passed; coverage report-only per QA 0.0260); `npm audit` (only the documented residual); `uvx pre-commit run --all-files` (all seven hooks passed).
+- **Architecture gate verified biting**: with a temporarily injected `@modelcontextprotocol/sdk` import in `src/prc/filename.ts`, the `src/prc` rule failed with exactly one violation (then reverted byte-identical) -- the `allowEmptyTests`-only passing state of feat-1 is over.
+
+Decisions Made (beyond the plan's pinned points): (1) `parseBpmn` accepts `string | Uint8Array` and decodes bytes as UTF-8 before delegating, because the underlying reader (`saxen`) rejects anything but a string (verified at runtime); (2) the store takes a minimal structural `PrcLogger` interface (`info`/`warn`/`error`) rather than importing pino's `Logger` type -- a pino logger satisfies it without a cast (proven by a test), keeping the core decoupled from pino's types as well as from the SDK; (3) an `id` that slugifies to nothing falls through to the filename-stem fallback, and when both yield an empty slug `import` returns a new structured error code `no-slug`; (4) the cache checksum always tracks the process's _own_ file (the one the conditional re-read watches): a default export updates it to the written bytes (REQ-006's literal wording), an explicit-path export leaves it untouched -- otherwise the next operation would trigger a spurious out-of-band re-read that reverted the in-memory tree to the stale own file; (5) "registered" means present in the session cache, so `export` of a UUID never imported this session returns `process-not-registered` even in a populated directory (ACC-009's "in every directory state"); (6) precondition/postcondition violations throw across the store boundary (bugs crash loudly) -- the store's error mapping catches only `BpmnParseError` and filesystem errno errors and returns structured results.
 
 #### 2026-10-31 21:22:43.635+01:00 - Plan refined (feat-refiner pass)
 
