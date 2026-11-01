@@ -350,6 +350,39 @@ describe('PrcStore (REQ-004/REQ-005/REQ-006/REQ-009)', () => {
       expect(readdirSync(prcDir).filter((name) => name.includes('.tmp'))).toHaveLength(0);
     });
 
+    it('reports write-failed and cleans up when the export target is an existing directory (REQ-008 failure path)', async () => {
+      const first = expectImportOk(await store.importProcess(copyFixture(ORDER_FIXTURE, 'src.bpmn')));
+      const exportDir = join(tempDir, 'export');
+      const targetDir = join(exportDir, 'target');
+      mkdirSync(targetDir, { recursive: true });
+      const ownBefore = sha256Hex(readFileSync(first.path));
+
+      const result = await store.exportProcess(first.uuid, targetDir);
+
+      // (1) a structured write-failed result with a single-line message.
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error('unreachable: an export to a directory must fail');
+      }
+      expect(result.error.code).toBe('write-failed');
+      expect(result.error.message.startsWith(`failed to write ${targetDir}: `)).toBe(true);
+      expect(result.error.message).not.toMatch(/[\r\n]/);
+
+      // (2) the temporary file was unlinked (the cleanup branch ran).
+      expect(readdirSync(exportDir).filter((name) => name.includes('.tmp'))).toHaveLength(0);
+
+      // (3) the directory target is intact and still empty.
+      expect(existsSync(targetDir)).toBe(true);
+      expect(readdirSync(targetDir)).toHaveLength(0);
+
+      // (4) the own file and the cached checksum are untouched: the own
+      // file's bytes are unchanged and a re-import is a cache hit (no
+      // spurious out-of-band re-read).
+      expect(sha256Hex(readFileSync(first.path))).toBe(ownBefore);
+      const reImport = expectImportOk(await store.importProcess(first.path));
+      expect(reImport.outOfBandReRead).toBe(false);
+    });
+
     it('verifies the REQ-006 postcondition: the written file re-parses to the source element set', async () => {
       const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
       const first = expectImportOk(await store.importProcess(source));
