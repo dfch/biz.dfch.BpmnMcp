@@ -2,9 +2,9 @@
 classification: null
 created: '2026-10-31T18:47:11.018+01:00'
 id: feat-2-prc-import-export
-status: planning
+status: review
 type: feat
-updated: '2026-11-01T00:48:57.000+01:00'
+updated: '2026-11-01T01:01:51.116+01:00'
 version: 1.0.0
 ---
 
@@ -149,7 +149,7 @@ None.
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
 
-#### 2026-11-01 00:48:57+01:00 - Phase 110 complete
+#### 2026-11-01 00:48:57.000+01:00 - Phase 110 complete
 
 The `import`/`export` MCP tools (Tasks 110.100–110.150) landed, all seven quality gates green from the repository root. No Phase 100 semantics were touched: `src/prc/`, the fixtures, and the Phase 100 tests are byte-unchanged (only `server.ts`/`index.ts` gained the wiring the plan pinned).
 
@@ -165,7 +165,7 @@ The `import`/`export` MCP tools (Tasks 110.100–110.150) landed, all seven qual
 
 Decisions Made (beyond the plan's pinned points): (1) the out-of-band re-read note is represented in the success JSON as the `outOfBandReRead` boolean plus an extra single-line `note` field present only when it is true -- the plan requires the re-read to be "noted in the tool result" but leaves the representation open, and the boolean keeps the field machine-checkable while the note keeps it human-readable; (2) an `isError` tool result carries the store's message verbatim as its single text content, without the machine code prefixed -- the "Structured tool errors" note pins a single-line, human-readable message, and the store's messages already encode the situation; (3) the SDK's `client.callTool` return type is a union whose task-based member has no `content`, so the test helpers narrow it with an explicit cast to the plain result shape (guarded at runtime on the content block's `type`/`text`), keeping the tests free of `any`; (4) the ACC-007 richer inventory walk (id/type/name per element, id/source/target per flow) is a test-local helper in `test/mcp-server.test.ts`, mirroring the production metamodel-driven walk split into `visit`/`recordInventoryElement`/`childReferences` -- production's `collectElementInventory` stays id/type only, per the plan's "do not extend production code just for the test".
 
-#### 2026-10-31 23:52:18+01:00 - Phase 100 complete
+#### 2026-10-31 23:52:18.000+01:00 - Phase 100 complete
 
 The `prc` artifact core (Tasks 100.100–100.150) landed, all seven quality gates green from the repository root:
 
