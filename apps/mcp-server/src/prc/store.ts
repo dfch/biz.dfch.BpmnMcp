@@ -11,6 +11,7 @@ import {
   BpmnParseError,
   collectElementInventory,
   getProcessId,
+  oneLine,
   parseBpmn,
   serializeBpmn,
   type BpmnElementRef,
@@ -486,11 +487,6 @@ async function atomicWriteFile(targetPath: string, data: string | Uint8Array): P
 /** The SHA-256 (hex) of a string (UTF-8) or raw bytes. */
 function sha256Hex(data: string | Uint8Array): string {
   return createHash('sha256').update(data).digest('hex');
-}
-
-/** Collapses every whitespace run of a string to a single space. */
-function oneLine(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
 }
 
 /** Type guard: is this a filesystem error carrying an error code? */

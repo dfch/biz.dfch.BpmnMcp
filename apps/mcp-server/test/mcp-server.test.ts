@@ -145,7 +145,8 @@ function referenceId(reference: unknown): string | undefined {
  * source, and target. The production `collectElementInventory`
  * carries only id/type, so the walk is duplicated here rather than
  * the production module extended for the test's sake (plan,
- * Task 110.140). Deterministically sorted, like the production one.
+ * Progress 2026-11-01, Decisions Made (4)). Deterministically
+ * sorted, like the production one.
  *
  * @param xml - The BPMN 2.0 XML to parse and walk.
  */

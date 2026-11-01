@@ -102,13 +102,25 @@ export function getProcessId(rootElement: BpmnRootElement): string | undefined {
  * The element inventory of a parsed tree (REQ-006's postcondition
  * basis): every element that carries a non-empty `id`, as a
  * deterministically sorted list of `{ id, type }` pairs. The walk
- * is metamodel-driven (each element's own descriptor: its many-
- * valued child properties and its single-valued element references,
- * cycle-safe through a visited set), so it covers the process model
- * and the BPMNDI interchange information alike -- including
- * elements reachable only through attribute references (the
- * diagram's `bpmnElement`, the plane's `planeElement`, a flow's
- * `sourceRef`/`targetRef`).
+ * is metamodel-driven (each element's own descriptor, cycle-safe
+ * through a visited set) and follows every property value that is
+ * itself a moddle element -- the many-valued child collections
+ * (`rootElements`, `flowElements`, the DI's `diagrams`, the
+ * plane's `planeElement`) and the single-valued element references.
+ * The process model and the BPMNDI interchange information are thus
+ * covered alike: the diagram lives in `Definitions.diagrams`, the
+ * plane in `BPMNDiagram.plane`, the shapes and edges in
+ * `BPMNPlane.planeElement`.
+ *
+ * Metamodel `isReference` attributes (the shapes' and edges'
+ * `bpmnElement`, a flow's `sourceRef`/`targetRef`) are resolved to
+ * element objects at the end of the parse, so a resolvable one is
+ * followed like any other reference; an unresolvable id leaves the
+ * property unset (a parse warning), and plain string attributes
+ * carry no element at all -- both are skipped. In a well-formed
+ * document a resolved reference always points at an element some
+ * child collection already carries, so the visited set makes those
+ * legs no-ops; reachability never depends on reference traversal.
  *
  * @param rootElement - The parsed document root.
  */
@@ -195,7 +207,7 @@ function causeMessage(cause: unknown): string {
 }
 
 /** Collapses every whitespace run of a string to a single space. */
-function oneLine(text: string): string {
+export function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 

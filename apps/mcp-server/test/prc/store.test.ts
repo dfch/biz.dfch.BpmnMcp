@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -207,6 +207,40 @@ describe('PrcStore (REQ-004/REQ-005/REQ-006/REQ-009)', () => {
       expect(existsSync(prcDir)).toBe(false);
     });
 
+    it('reports write-failed and registers nothing when the prc path is occupied by a regular file (REQ-008 failure path)', async () => {
+      mkdirSync(dirname(prcDir), { recursive: true });
+      writeFileSync(prcDir, 'a regular file, not a directory');
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+
+      const result = await store.importProcess(source);
+
+      // (1) a structured write-failed result with a single-line message
+      // naming the would-be copy path.
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error('unreachable: an import into an occupied prc path must fail');
+      }
+      expect(result.error.code).toBe('write-failed');
+      expect(result.error.message.startsWith(`failed to write ${prcDir}/`)).toBe(true);
+      expect(result.error.message).toMatch(/prc-[0-9a-f-]{36}-order-process\.bpmn: /);
+      expect(result.error.message).not.toMatch(/[\r\n]/);
+
+      // (2) nothing is written and nothing is registered: the regular file
+      // is intact and no import was logged.
+      expect(readFileSync(prcDir, 'utf8')).toBe('a regular file, not a directory');
+      expect(records.filter((record) => record.event === 'prc-import')).toHaveLength(0);
+
+      // (3) the source path was not mapped in the session: importing the
+      // same source again attempts a fresh copy and fails again, rather
+      // than succeeding via reuse.
+      const retry = await store.importProcess(source);
+      expect(retry.ok).toBe(false);
+      if (retry.ok) {
+        throw new Error('unreachable: the retry import must fail');
+      }
+      expect(retry.error.code).toBe('write-failed');
+    });
+
     it('works from an absent prc directory: the import creates it, the own-path export works (ACC-009)', async () => {
       expect(existsSync(prcDir)).toBe(false);
       const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
@@ -279,6 +313,72 @@ describe('PrcStore (REQ-004/REQ-005/REQ-006/REQ-009)', () => {
       expect(result.outOfBandReRead).toBe(false);
       expect(records.some((record) => record.event === 'prc-cache-load')).toBe(true);
       expect(records.some((record) => record.event === 'prc-reread-out-of-band')).toBe(false);
+    });
+
+    it('returns a structured not-bpmn error when re-importing an own path corrupted out of band (ACC-006 failure path)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+      const originalBytes = readFileSync(first.path);
+      writeFileSync(first.path, 'this is not BPMN');
+
+      const result = await store.importProcess(first.path);
+
+      // (1) a structured not-bpmn result with a single-line message.
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error('unreachable: a corrupted re-import must fail');
+      }
+      expect(result.error.code).toBe('not-bpmn');
+      expect(result.error.message).toMatch(/^failed to parse BPMN 2\.0 XML: /);
+      expect(result.error.message).not.toMatch(/[\r\n]/);
+
+      // (2) nothing is written and nothing is logged: the own path still
+      // carries the corrupted bytes, and no out-of-band re-read was noted.
+      expect(readFileSync(first.path)).toEqual(Buffer.from('this is not BPMN'));
+      expect(records.filter((record) => record.event === 'prc-reread-out-of-band')).toHaveLength(0);
+
+      // (3) the registration is untouched: the cache still holds the
+      // original checksum, so restoring the original bytes is a plain
+      // cache hit (no re-read note) on the next re-import.
+      writeFileSync(first.path, originalBytes);
+      const restored = expectImportOk(await store.importProcess(first.path));
+      expect(restored.uuid).toBe(first.uuid);
+      expect(restored.copied).toBe(false);
+      expect(restored.outOfBandReRead).toBe(false);
+    });
+
+    it('returns a structured not-bpmn error when exporting a process whose own file was corrupted out of band (ACC-006 failure path)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+      const originalBytes = readFileSync(first.path);
+      writeFileSync(first.path, 'this is not BPMN either');
+
+      const result = await store.exportProcess(first.uuid);
+
+      // (1) a structured not-bpmn result with a single-line message.
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error('unreachable: an export over a corrupted own file must fail');
+      }
+      expect(result.error.code).toBe('not-bpmn');
+      expect(result.error.message).toMatch(/^failed to parse BPMN 2\.0 XML: /);
+      expect(result.error.message).not.toMatch(/[\r\n]/);
+
+      // (2) nothing is written: no new file and no temporary file, the own
+      // path still carries the corrupted bytes.
+      expect(readFileSync(first.path)).toEqual(Buffer.from('this is not BPMN either'));
+      expect(readdirSync(prcDir)).toHaveLength(1);
+      expect(readdirSync(prcDir).filter((name) => name.includes('.tmp'))).toHaveLength(0);
+
+      // (3) the registration is untouched: restoring the original bytes is
+      // a cache hit and the export succeeds again without a re-read note.
+      writeFileSync(first.path, originalBytes);
+      const restored = await store.exportProcess(first.uuid);
+      expect(restored.ok).toBe(true);
+      if (!restored.ok) {
+        throw new Error('unreachable: the export after restore must succeed');
+      }
+      expect(restored.outOfBandReRead).toBe(false);
     });
   });
 
