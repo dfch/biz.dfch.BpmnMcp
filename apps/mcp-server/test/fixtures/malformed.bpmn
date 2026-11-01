@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="broken-process" isExecutable="false">
+    <bpmn:startEvent id="start-event" />
+    <bpmn:task id="task-1" name="Never closed
+</bpmn:definitions>

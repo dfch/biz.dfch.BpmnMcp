@@ -98,7 +98,9 @@ specification (slimmed 2026-10-24, QA 0.0210):
 - **Naming** (Google TS style): QA 0.0250 - config:
   `eslint.config.js` `naming-convention`.
 - **Pre/postconditions**: QA 0.0200/0.0260 - the in-house assertion
-  module.
+  module (`apps/mcp-server/src/assertions.ts`: `precondition`/
+  `postcondition` with `asserts` signatures; used by the `prc`
+  store operations since feat-2-prc-import-export).
 - **Architecture tests** (archunit: no cycles in `src`, no
   production-to-test dependencies, the core-vs-adapter layering):
   CONSTITUTION §4, QA 7.0030 - gate: the vitest architecture suite
@@ -145,7 +147,23 @@ against the package's own install location.
   `BPMN_MCP_DOCS_DIR` (default `./docs`) with the `prc` subdirectory
   hardcoded, so BPMN processes live under `<BPMN_MCP_DOCS_DIR>/prc`
   (resolved to an absolute path, reported by the `config` MCP
-  resource). Resolving the path never creates a directory.
+  resource). Resolving the path never creates a directory; the
+  `import`/`export` write operations
+  (feat-2-prc-import-export) create the `prc` directory when they
+  must place a file.
+- The `import`/`export` tools (feat-2-prc-import-export): `import`
+  takes the path of a BPMN 2.0 XML file anywhere on disk, copies it
+  byte-identical to `<BPMN_MCP_DOCS_DIR>/prc/prc-<uuid>-<slug>.bpmn`
+  (copy-on-import: the original is never modified or moved, and the
+  copy becomes the process's registered own file), and registers the
+  copy under a fresh v4 UUID (the slug from the document's process
+  `id`); re-importing the same source within one server session
+  reuses the UUID. `export` takes a registered UUID plus an optional
+  explicit target path and writes the serialized diagram to the
+  process's own `prc` file by default, or to the explicit path when
+  given (the only way another file is overwritten). Tool failures
+  return a structured `isError` result carrying a single-line,
+  human-readable message - nothing crashes the server.
 - Telemetry: OpenTelemetry API from day one (no-op until configured);
   set `OTEL_EXPORTER_OTLP_ENDPOINT` in `.env` to export to a local
   collector (QA 0.0130/0.0170). This feature's `config` MCP resource
