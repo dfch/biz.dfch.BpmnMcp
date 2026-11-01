@@ -2,9 +2,9 @@
 classification: null
 created: '2026-10-31T18:47:11.018+01:00'
 id: feat-2-prc-import-export
-status: review
+status: done
 type: feat
-updated: '2026-11-01T07:32:50.242+01:00'
+updated: '2026-11-01T10:33:44.170+01:00'
 version: 1.0.0
 ---
 
@@ -148,6 +148,10 @@ None.
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-01 10:31:20.953+01:00 - PR #10 merged, feature done
+
+PR #10 (branch `feat-2-prc-import-export`) was merged into `dev` on 2026-11-01 (commit `bed6cab`), closing the plan's remaining PR leg. All acceptance criteria were verified during Phases 100 to 110 and both post-implementation review rounds (see the update entries below). Status moved from `review` to `done`; the branch `feat-2-prc-import-export` remains on origin.
 
 #### 2026-11-01 07:32:50.242+01:00 - Post-implementation review (second round) findings addressed
 
