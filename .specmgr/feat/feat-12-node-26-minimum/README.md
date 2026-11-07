@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-07T07:26:52.924+01:00'
 id: feat-12-node-26-minimum
-status: planning
+status: done
 type: feat
-updated: '2026-11-07T07:42:07.692+01:00'
+updated: '2026-11-07T08:18:39.933+01:00'
 version: 1.0.0
 ---
 
@@ -27,15 +27,15 @@ the `typescript-eslint` peer cap < 6.1.0) stops re-opening as a red PR.
 - REQ-001: The Node.js floor is 26 in every engine declaration: `engines.node` is `>=26` in the root `package.json` and in `apps/mcp-server/package.json`, and `.node-version` contains `26`.
 - REQ-002: CI runs the gates on Node 26: `node-version: 26` in `.github/workflows/ci.yml`, with `npm ci`, `lint`, `format:check`, `build`, and `test --coverage` green.
 - REQ-003: The docs agree: the `CONTRIBUTING.md` prerequisite and the C4 docs (`docs/c4/workspace.dsl`, `docs/c4/c4-container.puml`) state Node.js 26.
-- REQ-004: `@types/node` matches the floor: the root devDependency is `^26.6.6`, merged via Dependabot PR #9.
+- REQ-004: `@types/node` matches the floor: the root devDependency is `^26.6.6`, merged via Dependabot PR #14 (superseding the closed PR #9).
 - REQ-005: `.github/dependabot.yml` ignores TypeScript major updates, and PR #6 is closed with the blocking reason recorded.
 
 ### Acceptance Criteria
 
-- [ ] ACC-001: No live config or doc still says Node 24: no `>=24` engine, no `node-version: 24`, no "Node.js 24" outside the historical records (the done feat-1/feat-2 plans, `docs/qa`) and the `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` env (Actions runtime, not the project runtime).
-- [ ] ACC-002: On a clean checkout with Node 26, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass locally and in CI.
-- [ ] ACC-003: PR #9 is merged into `dev` and the root lockfile carries `@types/node` 26.x.
-- [ ] ACC-004: The Dependabot TypeScript-major ignore rule is in place and PR #6 is closed.
+- [x] ACC-001: No live config or doc still says Node 24: no `>=24` engine, no `node-version: 24`, no "Node.js 24" outside the historical records (the done feat-1/feat-2 plans, `docs/qa`) and the `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` env (Actions runtime, not the project runtime).
+- [x] ACC-002: On a clean checkout with Node 26, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass locally and in CI.
+- [x] ACC-003: The `@types/node` 26 Dependabot PR is merged into `dev` and the root lockfile carries `@types/node` 26.x (PR #14, merge b2b2827).
+- [x] ACC-004: The Dependabot TypeScript-major ignore rule is in place and PR #6 is closed.
 
 ### Scope
 
@@ -43,7 +43,8 @@ the `typescript-eslint` peer cap < 6.1.0) stops re-opening as a red PR.
 
 - The floor-raise change (REQ-001..003), including the stale
   action-version comments in `ci.yml`.
-- The `@types/node` 26 alignment (REQ-004) via PR #9.
+- The `@types/node` 26 alignment (REQ-004) via the Dependabot PR that
+  landed as #14 (originally #9).
 - The Dependabot housekeeping (REQ-005).
 
 #### Explicitly Out Of Scope
@@ -92,30 +93,40 @@ project runtime; it stays.
 - [x] Task 100.130: Add the TypeScript-major ignore rule to `.github/dependabot.yml`.
 - [x] Task 100.140: Run the gates locally on Node 26 (`npm ci`, `lint`, `format:check`, `build`, `test --coverage`) and open the PR referencing issue #12, the DEC, and this feat.
 
-#### Phase 110: Align @types/node (PR #9)
+#### Phase 110: Align @types/node (Dependabot PR #9, superseded by #14)
 
-- [ ] Task 110.100: After the Phase 100 PR merges, rebase Dependabot PR #9 (`@dependabot rebase`) and check CI green on Node 26.
-- [ ] Task 110.110: Merge PR #9; verify the lockfile carries `@types/node` 26.x and re-run the gates.
+- [x] Task 110.100: After the Phase 100 PR merges, rebase the Dependabot `@types/node` PR and check CI green on Node 26 (PR #9 was closed and superseded by PR #14).
+- [x] Task 110.110: Merge the `@types/node` PR; verify the lockfile carries `@types/node` 26.x and re-run the gates (PR #14, merge b2b2827; dev CI green).
 
 #### Phase 120: Close out
 
-- [ ] Task 120.100: Close PR #6 (TypeScript 7) with the blocking reason (typescript-eslint peer cap < 6.1.0).
-- [ ] Task 120.110: Point the feat-11 plan at `engines >=26`; mark this feat done and record the merged PRs in Progress.
+- [x] Task 120.100: Close PR #6 (TypeScript 7) with the blocking reason (typescript-eslint peer cap < 6.1.0).
+- [x] Task 120.110: Point the feat-11 plan at `engines >=26`; mark this feat done and record the merged PRs in Progress.
 
 ## Progress
 
 ### Current Status
 
-**As of 2026-11-07**: Phase 100 complete. The floor raise, the doc
-updates, the stale `ci.yml` comment fix, and the Dependabot ignore rule
-are committed; all gates pass locally on Node 26.13.0 (153/153 tests,
-95.07% statement coverage). The feat-11 plan is pointed at
-`engines >=26`. Awaiting the PR merge; Phase 110 (PR #9) and Phase 120
-(PR #6) follow.
+**As of 2026-11-07**: Done. Node 26 is the sole supported runtime:
+the floor raise landed as PR #13, `@types/node` 26 as PR #14
+(superseding the closed PR #9), the Dependabot TypeScript-major ignore
+rule is in place, and PR #6 is closed with the blocking reason
+recorded. All acceptance criteria are met; CI on `dev` is green on
+Node 26.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-07T08:16:00.000Z - Feature done
+
+Phase 110: the Dependabot `@types/node` 26 bump originally opened as
+PR #9 was closed (a rebase after the PR #13 merge left it stale) and
+landed instead as PR #14 (merge b2b2827); the `dev` lockfile carries
+`@types/node` 26.6.6 and CI is green on Node 26. Phase 120: PR #6
+(TypeScript 7) was closed with the typescript-eslint peer-cap reason
+recorded as a comment. All ACCs verified and checked; the feat is
+marked done.
 
 #### 2026-11-07T07:45:00.000Z - Phase 100 complete
 
@@ -139,13 +150,13 @@ Initial feature plan for the Node 26 floor raise, per DEC
 #### 2026-11-07T07:30:00.000Z - One PR for the floor raise
 
 The floor raise, the doc updates, and the Dependabot ignore rule ship
-in a single PR (issue #12); PR #9 (Dependabot, `@types/node` 26) is a
+in a single PR (issue #12); the Dependabot `@types/node` 26 PR is a
 separate merge that Phase 110 follows up. Historical "Node 24" records
 stay untouched.
 
 ### Related PRs / Commits
 
 - GitHub issue #12; DEC 5185d651-7283-4b1d-87e0-272795d15edf
-- PR #13: the Phase 100 floor raise (engines, CI, docs, Dependabot rule)
-- PR #9 (Dependabot: `@types/node` 26) - merges in Phase 110
-- PR #6 (Dependabot: TypeScript 7) - closes in Phase 120
+- PR #13: the Phase 100 floor raise (engines, CI, docs, Dependabot rule) - merged
+- PR #14 (Dependabot: `@types/node` 26) - Phase 110, merged (b2b2827); superseded the closed PR #9
+- PR #6 (Dependabot: TypeScript 7) - closed in Phase 120 with the blocking reason recorded
