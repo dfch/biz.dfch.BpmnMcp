@@ -111,33 +111,50 @@ GitHub issue #17.
 
 #### Phase 120: Gates and docs
 
-- [ ] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier).
-- [ ] Task 120.110: Update the C4 container description (the tool list) and this feat's Progress section.
+- [x] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier).
+- [x] Task 120.110: Update the C4 container description (the tool list) and this feat's Progress section.
 - [ ] Task 120.120: Open the PR referencing issue #17.
 
 ## Progress
 
 ### Current Status
 
-**As of 2026-11-07 (Phase 110 complete)**: The `create` and `change`
-tools are registered over the Phase 100 core (the flat advertised
-input, the discriminated-union operation assembly in the handler,
-the 1:1 result mapping), the handshake lists all four tools, and the
-spawn-level e2e legs prove ACC-001..ACC-003 and ACC-005 (every
-REQ-007 error leg single-line `isError`, the server and the draft
-state intact) over real stdio; the in-process adapter legs cover
-the JSON shapes, the write-through persistence (REQ-005), and the
-re-read note (REQ-004) for `change`. No core module changed. The
-Phase 110 gate chain (`npm ci`, `lint`, `format:check`, `build`,
-`test --coverage`) is green on Node 26 (238 tests, 94.64% statement
-coverage). Next is Phase 120 (the full gate re-run and drift
-checks, the C4 container description update, and the PR against
-issue #17); after this feat merges, continue with feat-18, feat-19,
+**As of 2026-11-07 (Phase 120 complete)**: All implementation phases
+(100/110/120) are done. The `create` and `change` tools ship over the
+Phase 100 core (session drafts, grid-placed DI, write-through
+persistence); the Phase 120 gate chain (`npm ci`, `lint`,
+`format:check`, `build`, `test --coverage`) is green on Node 26
+(238 tests, 94.64% statement coverage) with no drift found, and the
+C4 container description now reflects the four-tool surface
+(create, change, import, export) plus the session-draft and
+editing/layout core. The feature is ready for review; the PR
+referencing issue #17 will be opened when this feat's status flips
+to `review`. After this feat merges, continue with feat-18, feat-19,
 and feat-20 (all planned on `dev`), in that order.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-07T19:11:00.000Z - Phase 120 complete (gates green on Node 26, C4 tool surface corrected)
+
+Landed the Phase 120 deliverables (Task 120.120, the PR against
+issue #17, stays with the orchestrator). The full gate chain on
+Node 26 (v26.13.0) is green with no drift found and nothing to
+fix: `npm ci` (323 packages), `npm run lint` (ESLint, clean),
+`npm run format:check` (Prettier, clean), `npm run build` (tsc
+noEmit + build, clean), `npm test -- --coverage` (16 files, 238
+tests, 94.64% statement coverage). The C4 container description
+was corrected in both `docs/c4/c4-container.puml` and
+`docs/c4/workspace.dsl` (kept byte-identical, everything else
+untouched): the server now exposes four MCP tools (create,
+change, import, export) with validate, parse, and preview as the
+remaining planned Stage 1 tools (feat-19, feat-18, feat-20), and
+the prc core sentence now carries the in-memory session-draft map
+(created-but-not-yet-exported processes, lost on restart) and the
+editing/layout operations (create/add/update/connect/delete with
+grid-placed BPMN DI, write-through persistence for file-backed
+processes).
 
 #### 2026-11-07T18:55:00.000Z - Phase 110 complete (create/change tool adapters, e2e legs)
 
