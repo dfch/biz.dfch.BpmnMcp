@@ -348,3 +348,4 @@ alternative is dropped.
 ### Related PRs / Commits
 
 - GitHub issue #17
+- Pull request #21 (https://github.com/dfch/biz.dfch.BpmnMcp/pull/21): the create and change MCP tools (status: review)
