@@ -4,7 +4,7 @@ created: '2026-11-07T07:26:52.924+01:00'
 id: feat-12-node-26-minimum
 status: planning
 type: feat
-updated: '2026-11-07T07:40:38.654+01:00'
+updated: '2026-11-07T07:42:07.692+01:00'
 version: 1.0.0
 ---
 
@@ -146,5 +146,6 @@ stay untouched.
 ### Related PRs / Commits
 
 - GitHub issue #12; DEC 5185d651-7283-4b1d-87e0-272795d15edf
+- PR #13: the Phase 100 floor raise (engines, CI, docs, Dependabot rule)
 - PR #9 (Dependabot: `@types/node` 26) - merges in Phase 110
 - PR #6 (Dependabot: TypeScript 7) - closes in Phase 120
