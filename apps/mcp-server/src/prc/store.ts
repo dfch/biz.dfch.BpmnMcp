@@ -396,9 +396,11 @@ export class PrcStore {
 
     const entry = this.cache.get(uuid);
     if (entry === undefined) {
+      // The uuid is user input: single-line it before interpolation
+      // (review finding E1, REQ-007's single-line `isError` contract).
       return {
         ok: false,
-        error: { code: 'process-not-registered', message: `process ${uuid} is not registered` },
+        error: { code: 'process-not-registered', message: `process ${oneLine(uuid)} is not registered` },
       };
     }
 
@@ -407,7 +409,7 @@ export class PrcStore {
     try {
       reRead = (await this.ensureCurrentTree(uuid, entry.path)).reRead;
       current = this.cache.get(uuid);
-      precondition(current !== undefined, `process ${uuid} must stay registered during change`);
+      precondition(current !== undefined, `process ${oneLine(uuid)} must stay registered during change`);
     } catch (error) {
       if (error instanceof BpmnParseError) {
         return { ok: false, error: { code: 'not-bpmn', message: error.message } };

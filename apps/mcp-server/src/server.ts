@@ -65,6 +65,24 @@ const RE_READ_NOTE =
 const NON_NEGATIVE_INT = z.number().int().nonnegative();
 
 /**
+ * The shape of every process UUID this server assigns (v4, lowercase
+ * hex -- the `UUID_V4_SHAPE` convention both MCP-level test files
+ * pin): a uuid outside the shape, in particular a control-character
+ * uuid, is rejected at the MCP layer with the SDK's single-line
+ * `-32602` input-validation error instead of reaching the store
+ * (feat-17 REQ-007/ACC-005, review finding E1; the store-side
+ * `oneLine` wrap is the defense-in-depth second layer). The
+ * pre-existing `import`/`export` tools keep their plain `z.string()`
+ * (feat-2 territory, untouched).
+ */
+const UUID_V4 = z
+  .string()
+  .regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    'the process uuid must be a v4 UUID (the format this server assigns)',
+  );
+
+/**
  * The Stage 1 element types in the tool-facing kebab-case vocabulary
  * (feat-17 REQ-002): derived from the core's `ELEMENT_TYPES` so the
  * tool and the core can never drift apart.
@@ -95,15 +113,16 @@ const CREATE_INPUT = {
 
 /**
  * The `change` tool's advertised input (feat-17 REQ-002, QA 1.0010's
- * top-level action parameter): `uuid` plus every action's fields at
- * the top level. The flat shape keeps each field visible in
+ * top-level action parameter): `uuid` (shape-constrained to the v4
+ * UUIDs this server assigns, review finding E1) plus every action's
+ * fields at the top level. The flat shape keeps each field visible in
  * `tools/list`; which of them the chosen `action` requires is
  * enforced where the core's operation is assembled (the
  * `EDITING_OPERATION` parse in the handler), so the advertised schema
  * never misreports a field as required for every action.
  */
 const CHANGE_INPUT = {
-  uuid: z.string(),
+  uuid: UUID_V4,
   action: z.enum(['add-element', 'update-element', 'connect', 'delete-element']),
   type: z.enum(STAGE1_ELEMENT_TYPES).optional(),
   name: z.string().optional(),
@@ -327,21 +346,24 @@ export function createServer(loggingConfig: LoggingConfig, store: PrcStore): Mcp
       title: 'Change a BPMN process',
       description:
         'Applies exactly one change to a process addressed by its uuid (one action per call). ' +
-        'add-element creates a new element: type from the Stage 1 set (start-event, end-event, ' +
-        'intermediate-catch-event, task, sub-process, exclusive-gateway, parallel-gateway) plus ' +
-        'an optional name, an optional caller-supplied id, and optional non-negative integer x/y ' +
-        'coordinates (omitted coordinates are grid-placed). update-element changes an existing ' +
-        'one: id plus an optional name (any flow element, node or sequence flow), an optional ' +
-        'isInterrupting (start events only), and optional x/y repositioning the element. connect ' +
-        'creates a sequence flow between two flow nodes: sourceId and targetId plus an optional ' +
-        'name and an optional conditionExpression text. delete-element removes a flow node -- ' +
-        'with every sequence flow referencing it -- or a sequence flow: id. For registered ' +
-        'processes the change is write-through: the mutation is serialized to the process prc ' +
-        'file, the single source of truth; for session drafts (created but not yet exported) it ' +
-        'stays in memory until export. Returns JSON with uuid, action, the operation detail (ids, ' +
-        'positions, or removal counts), persisted, and outOfBandReRead (plus a note when an ' +
-        'out-of-band change was re-read). This tool does not validate the diagram -- call the ' +
-        'validate tool after changes you care about.',
+        'Fields not belonging to the chosen action are ignored. add-element creates a new ' +
+        'element: type from the Stage 1 set (start-event, end-event, intermediate-catch-event, ' +
+        'task, sub-process, exclusive-gateway, parallel-gateway) plus an optional name, an ' +
+        'optional caller-supplied id, and optional non-negative integer x/y coordinates (omitted ' +
+        'coordinates are grid-placed). An intermediate-catch event is created without an event ' +
+        'definition (the BPMN spec requires one, tied to a message) and will be flagged by the ' +
+        'validate tool until the message-flow increment lands. update-element changes an ' +
+        'existing one: id plus an optional name (any flow element, node or sequence flow), an ' +
+        'optional isInterrupting (start events only), and optional x/y repositioning the element. ' +
+        'connect creates a sequence flow between two flow nodes: sourceId and targetId plus an ' +
+        'optional name and an optional conditionExpression text. delete-element removes a flow ' +
+        'node -- with every sequence flow referencing it -- or a sequence flow: id. For ' +
+        'registered processes the change is write-through: the mutation is serialized to the ' +
+        'process prc file, the single source of truth; for session drafts (created but not yet ' +
+        'exported) it stays in memory until export. Returns JSON with uuid, action, the operation ' +
+        'detail (ids, positions, or removal counts), persisted, and outOfBandReRead (plus a note ' +
+        'when an out-of-band change was re-read). This tool does not validate the diagram -- call ' +
+        'the validate tool after changes you care about.',
       inputSchema: CHANGE_INPUT,
     },
     async (args) => {

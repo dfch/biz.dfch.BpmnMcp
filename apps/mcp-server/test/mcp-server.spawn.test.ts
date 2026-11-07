@@ -620,5 +620,26 @@ describe('spawned server over real stdio (ACC-006, ACC-007, ACC-008)', () => {
       expect(updated).toMatchObject({ persisted: true });
       expect(readFileSync(ownPath, 'utf8')).toContain('name="The end"');
     });
+
+    it('ACC-005 (E1): a control-character uuid is a single-line isError; the server stays usable', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const created = await createSuccess(client, { name: 'E1 Probe' });
+
+      const newlineUuid = await callTool(client, 'change', {
+        uuid: 'a\nb',
+        action: 'delete-element',
+        id: 'task_1',
+      });
+      expect(newlineUuid.isError).toBe(true);
+      expect(newlineUuid.text).not.toContain('\n');
+      expect(newlineUuid.text).toMatch(/at uuid/);
+
+      // The server stays usable after the rejected input.
+      const added = await changeSuccess(client, { uuid: created.uuid, action: 'add-element', type: 'task' });
+      expect(added).toMatchObject({ id: 'task_1', persisted: false });
+    });
   });
 });

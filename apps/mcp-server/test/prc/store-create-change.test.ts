@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Ronald Rink, d-fens GmbH
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,8 +19,14 @@ import { resolve } from 'node:path';
 
 const FIXTURES_DIR = resolve(fileURLToPath(new URL('../fixtures/', import.meta.url)));
 const ORDER_FIXTURE = join(FIXTURES_DIR, 'order-process.bpmn');
+const MALFORMED_FIXTURE = join(FIXTURES_DIR, 'malformed.bpmn');
 
 const UUID_V4_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** The SHA-256 (hex) of a file's content (the byte-identity probes, review finding G1/G2). */
+function sha256Hex(path: string): string {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
 
 interface LogRecord {
   level: 'info' | 'warn' | 'error';
@@ -196,6 +203,26 @@ describe('PrcStore session drafts and change (feat-17 REQ-001..REQ-005, REQ-007)
       }
     });
 
+    it('a failed change on a file-backed process leaves the own file byte-identical (G1)', async () => {
+      const source = join(tempDir, 'src.bpmn');
+      writeFileSync(source, readFileSync(ORDER_FIXTURE));
+      const imported = expectImportOk(await store.importProcess(source));
+      const beforeHash = sha256Hex(imported.path);
+
+      const failed = await store.changeProcess(imported.uuid, { action: 'delete-element', id: 'ghost' });
+      expect(failed.ok).toBe(false);
+      if (failed.ok) {
+        throw new Error('unreachable: a missing id must fail the change');
+      }
+      expect(failed.error.code).toBe('unknown-element-id');
+
+      // The failed edit wrote nothing: the own file is byte-identical...
+      expect(sha256Hex(imported.path)).toBe(beforeHash);
+      // ...and the process stays usable (a successful change after).
+      const changed = expectChanged(await store.changeProcess(imported.uuid, { action: 'add-element', type: 'task' }));
+      expect(changed.persisted).toBe(true);
+    });
+
     it('write-through: a change on a file-backed process updates the file and the checksum (REQ-005)', async () => {
       const source = join(tempDir, 'src.bpmn');
       writeFileSync(source, readFileSync(ORDER_FIXTURE));
@@ -290,6 +317,44 @@ describe('PrcStore session drafts and change (feat-17 REQ-001..REQ-005, REQ-007)
         throw new Error('unreachable: a deleted own file must fail the change');
       }
       expect(result.error.code).toBe('path-missing');
+    });
+
+    it('a change after out-of-band corruption returns structured not-bpmn, the file untouched (G2)', async () => {
+      const source = join(tempDir, 'src.bpmn');
+      writeFileSync(source, readFileSync(ORDER_FIXTURE));
+      const imported = expectImportOk(await store.importProcess(source));
+
+      // Corrupt the registered own file out of band (unparseable XML).
+      writeFileSync(imported.path, readFileSync(MALFORMED_FIXTURE));
+      const corruptedHash = sha256Hex(imported.path);
+
+      const result = await store.changeProcess(imported.uuid, { action: 'add-element', type: 'task' });
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error('unreachable: a corrupted own file must fail the change');
+      }
+      expect(result.error.code).toBe('not-bpmn');
+      expect(result.error.message).not.toMatch(/[\r\n]/);
+
+      // The corrupted file is byte-identical (nothing was written over it)...
+      expect(sha256Hex(imported.path)).toBe(corruptedHash);
+      // ...and the store stays usable for other processes.
+      const otherSource = join(tempDir, 'other.bpmn');
+      writeFileSync(otherSource, readFileSync(ORDER_FIXTURE));
+      const other = expectImportOk(await store.importProcess(otherSource));
+      expect(other.uuid).not.toBe(imported.uuid);
+      expectChanged(await store.changeProcess(other.uuid, { action: 'add-element', type: 'task' }));
+    });
+
+    it('single-lines a control-character uuid in the not-registered message (E1 core leg)', async () => {
+      const result = await store.changeProcess('a\nb', { action: 'delete-element', id: 'x' });
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error('unreachable: an unregistered uuid must fail');
+      }
+      expect(result.error.code).toBe('process-not-registered');
+      expect(result.error.message).toBe('process a b is not registered');
+      expect(result.error.message).not.toMatch(/[\r\n]/);
     });
   });
 

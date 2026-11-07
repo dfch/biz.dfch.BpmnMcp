@@ -41,11 +41,11 @@ GitHub issue #17.
 
 ### Acceptance Criteria
 
-- [ ] ACC-001: A spawn-level round trip works: `create` (empty) then `change` (add two elements, connect them) then `export` - the exported file re-parses, carries the requested element set, and the new elements have non-overlapping grid DI.
-- [ ] ACC-002: `update-element` renames, `delete-element` removes the element and its connected flows, and `connect` with a condition attaches the condition expression - each verifiable in the serialized XML.
-- [ ] ACC-003: Elements without coordinates are grid-placed at the standard sizes; explicit coordinates appear unchanged in the XML.
-- [ ] ACC-004: The handshake lists `create` and `change` in addition to the existing tools; all pre-existing tests pass; the full gate chain is green on Node 26 (`npm ci`, `lint`, `format:check`, `build`, `test --coverage`).
-- [ ] ACC-005: Each error leg (unknown uuid, unknown type, connect to a missing element, duplicate id) returns `isError` with a single-line message and leaves the server and the process state usable.
+- [x] ACC-001: A spawn-level round trip works: `create` (empty) then `change` (add two elements, connect them) then `export` - the exported file re-parses, carries the requested element set, and the new elements have non-overlapping grid DI.
+- [x] ACC-002: `update-element` renames, `delete-element` removes the element and its connected flows, and `connect` with a condition attaches the condition expression - each verifiable in the serialized XML.
+- [x] ACC-003: Elements without coordinates are grid-placed at the standard sizes; explicit coordinates appear unchanged in the XML.
+- [x] ACC-004: The handshake lists `create` and `change` in addition to the existing tools; all pre-existing tests pass; the full gate chain is green on Node 26 (`npm ci`, `lint`, `format:check`, `build`, `test --coverage`).
+- [x] ACC-005: Each error leg (unknown uuid, unknown type, connect to a missing element, duplicate id) returns `isError` with a single-line message and leaves the server and the process state usable.
 
 ### Scope
 
@@ -115,19 +115,63 @@ GitHub issue #17.
 - [x] Task 120.110: Update the C4 container description (the tool list) and this feat's Progress section.
 - [x] Task 120.120: Open the PR referencing issue #17.
 
+#### Phase 130: Post-implementation review findings
+
+- [x] Task 130.100: Fix E1 — the single-line `isError` contract for uuid inputs.
+- [x] Task 130.110: Close the negative-leg test gaps G1 (failed change on a file-backed process leaves the file byte-identical), G2 (change after out-of-band corruption returns structured `not-bpmn`, file untouched), G3 (`sizeForElement` gateway-family fallback).
+- [x] Task 130.120: Plan hygiene and honest descriptions — tick ACC-001..ACC-005, document ignored foreign per-action fields (I1), note the intermediate-catch-event spec incompleteness (I4), and record the deferred improvements (I2, I3, I5, I6) in an Updates entry.
+
 ## Progress
 
 ### Current Status
 
 **As of 2026-11-07 (status `review`)**: All three implementation
-phases (100/110/120) are done and the full gate chain is green on
-Node 26 (238 tests, 94.64% statement coverage). The PR referencing
-GitHub issue #17 is opened from this branch; after this feat merges,
-continue with feat-18, feat-19, and feat-20, in that order.
+phases (100/110/120) and the post-implementation review-fix phase
+(130) are done and the full gate chain is green on Node 26 (243
+tests, 95.04% statement coverage). The PR referencing GitHub issue
+#17 is opened from this branch; after this feat merges, continue
+with feat-18, feat-19, and feat-20, in that order.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-07T20:53:00.000Z - Phase 130 complete (post-implementation review findings: E1 fixed in both layers, G1/G2/G3 test legs added, plan hygiene)
+
+Addressed the read-only feat review findings. E1 (the one true
+contract slip, REQ-007/ACC-005): fixed in both layers -- the core
+now single-lines every user-supplied uuid the `changeProcess` path
+interpolates into a message (the `oneLine` wrap, the export/import
+paths untouched, feat-2 territory), and the adapter shape-constrains
+`change`'s `uuid` to a v4 UUID at the zod layer, so a control-character
+uuid is rejected with the SDK's single-line `-32602` input-validation
+error before it reaches the store; a spawn-level wire leg pins
+`change {uuid: "a\nb"}` to `isError: true`, no line break in the
+text, and one follow-up successful call (a store-level leg pins the
+core message composition as well). G1/G2/G3 (test holes): new
+store-level legs pin a failed change on a file-backed process leaving
+the own file byte-identical (SHA-256) with the process still usable
+(G1), a change after out-of-band corruption returning structured
+single-line `not-bpmn` with the corrupted file byte-identical and the
+store still usable for other processes (G2), and the `sizeForElement`
+gateway-family fallback for `bpmn:InclusiveGateway` (G3). D1/I1/I4
+(plan hygiene, honest descriptions): ACC-001..ACC-005 ticked (the
+reviewer verified all five genuinely met), one sentence in the
+`change` tool description noting that fields not belonging to the
+chosen action are ignored (I1), and one sentence there noting that
+intermediate catch events are created without an event definition and
+will be flagged by `validate` until the message-flow increment lands
+(I4; `create` left unchanged, one sentence total). Deferred as
+follow-ups, one line each -- I2: sub-process family reachability
+(`$instanceOf('bpmn:SubProcess')` instead of the exact type) for
+imported AdHocSubProcess/Transaction inner elements; I3: the DI
+operations address only the first diagram's plane; I5: `findFreeSlot`
+is O(n^2) and throws raw on grid exhaustion instead of a structured
+code; I6: a no-op `update-element` still rewrites the own file
+(`persisted: true`) -- all out of Stage 1 scope or a later increment,
+no tasks added for them. The full gate chain is green on Node 26
+(243 tests, 95.04% statement coverage; the five new tests above, the
+pre-existing 238 all still pass).
 
 #### 2026-11-07T19:30:00.000Z - Marked ready for review
 
@@ -221,6 +265,28 @@ issue #17 and QA pairs 1.0010/1.0050/1.0060/1.0070.
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-07T20:53:00.000Z - E1 adapter constraint: `change`'s uuid is a v4-uuid regex at the zod layer
+
+Scoped decision (Task 130.100): the review offered two adapter-layer
+shapes for the `change` uuid -- the v4-uuid regex or a looser
+non-empty/no-control-char constraint. The v4-uuid regex was chosen:
+every uuid this server assigns is a v4 (`crypto.randomUUID`,
+`generateUuid`), so the shape is exactly the input's identity space;
+the regex is already the repository's convention (`UUID_V4_SHAPE` in
+both MCP-level test files); and it rejects a control-character uuid
+with the SDK's own single-line `-32602` input-validation error
+(message style consistent with the other MCP-layer rejections, e.g.
+`... at uuid`). The accepted trade-off: a non-v4-shaped uuid (e.g.
+`foo`) now errors at the MCP layer with the SDK message instead of
+the store's `process foo is not registered` -- both are single-line
+`isError` results, the wire contract (REQ-007/ACC-005) holds at
+either layer, and every pre-existing test leg uses a v4-shaped
+unknown uuid, so it still reaches the store unchanged. The
+pre-existing `import`/`export` tools keep their plain `z.string()`
+(feat-2 territory, untouched per the review); the core's `oneLine`
+wrap of the `changeProcess` messages is the defense-in-depth second
+layer for any store-level caller.
 
 #### 2026-11-07T18:55:00.000Z - change input: flat advertised shape, discriminated-union parse in the handler
 

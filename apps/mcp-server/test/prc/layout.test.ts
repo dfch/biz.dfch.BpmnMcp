@@ -91,6 +91,12 @@ describe('sizeForElement', () => {
     expect(sizeForElement(createBpmnElement('bpmn:ReceiveTask', { id: 't' }))).toEqual(TASK_SIZE);
     expect(sizeForElement(createBpmnElement('bpmn:BoundaryEvent', { id: 'e' }))).toEqual(EVENT_SIZE);
   });
+
+  it('falls back to the gateway family for gateway types beyond the set (G3)', () => {
+    // bpmn:InclusiveGateway is not in the Stage 1 size table, but it is
+    // a bpmn:Gateway in the metamodel: the family branch applies.
+    expect(sizeForElement(createBpmnElement('bpmn:InclusiveGateway', { id: 'g' }))).toEqual(GATEWAY_SIZE);
+  });
 });
 
 describe('rectanglesOverlap', () => {
