@@ -98,10 +98,10 @@ GitHub issue #17.
 
 #### Phase 100: Core editing and layout
 
-- [ ] Task 100.100: Add the core editing module: `createProcess` (definitions/process tree, id generation) and the four change operations (add/update/connect/delete) on a parsed tree, with structured error types.
-- [ ] Task 100.110: Add the grid layout module (constants, first-free-slot placement, shape/edge emission) and wire DI into the editing operations.
-- [ ] Task 100.120: Add session-draft resolution to `PrcStore` (draft-first lookup, draft promotion on export) with unit tests.
-- [ ] Task 100.130: Unit tests for the editing and layout modules (fixture trees, error legs, grid non-overlap).
+- [x] Task 100.100: Add the core editing module: `createProcess` (definitions/process tree, id generation) and the four change operations (add/update/connect/delete) on a parsed tree, with structured error types.
+- [x] Task 100.110: Add the grid layout module (constants, first-free-slot placement, shape/edge emission) and wire DI into the editing operations.
+- [x] Task 100.120: Add session-draft resolution to `PrcStore` (draft-first lookup, draft promotion on export) with unit tests.
+- [x] Task 100.130: Unit tests for the editing and layout modules (fixture trees, error legs, grid non-overlap).
 
 #### Phase 110: Tool adapters
 
@@ -119,18 +119,44 @@ GitHub issue #17.
 
 ### Current Status
 
-**As of 2026-11-07**: Ready for implementation. All design decisions
-are recorded in Decisions Made (write-through persistence, sequence
-flows only). Start on branch `feat-17-create-change-tools` (created
-from `dev`); run the Task List phases in order (100 -> 110 -> 120),
-with the phase-end gates per CONTRIBUTING section 6 (`npm ci`, `lint`,
-`format:check`, `build`, `test --coverage` on Node 26); close with
-one PR referencing issue #17. After this feat merges, continue with
-feat-18, feat-19, and feat-20 (all planned on `dev`), in that order.
+**As of 2026-11-07 (Phase 100 complete)**: The core editing and grid
+layout modules are implemented and the `PrcStore` now resolves
+session drafts (draft-first lookup, write-through change, draft
+promotion on export), all under `src/prc/` (REQ-008) with the full
+unit-test coverage for the editing, layout, and draft operations
+(REQ-001..REQ-005, REQ-007). The Phase 100 gate chain (`npm ci`,
+`lint`, `format:check`, `build`, `test --coverage`) is green on Node
+26 (223 tests, 94%+ statement coverage). Next is Phase 110 (the
+`create`/`change` tool adapters over this core, the handshake/e2e
+legs, and the REQ-007 error-leg verification), then Phase 120 (gates
+and docs). After this feat merges, continue with feat-18, feat-19,
+and feat-20 (all planned on `dev`), in that order.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-07T14:05:00.000Z - Phase 100 complete (core editing, grid layout, session drafts)
+
+Landed the Phase 100 deliverables. New core modules: `src/prc/editing.ts`
+(`createProcess` plus the `addElement`/`updateElement`/`connect`/
+`deleteElement` operations with the `EditingErrorCode` structured
+errors, the family-aware generated ids, and the scoped property set)
+and `src/prc/layout.ts` (the UPPER_SNAKE_CASE grid constants, the
+first-free-slot scan, and the shape/edge emission the editing ops wire
+in). `src/prc/moddle.ts` gained `createBpmnElement` (the factory touch
+point) and an exported `isModdleElement` guard. `src/prc/store.ts` now
+carries the in-memory draft map and the `createProcess`/`changeProcess`
+operations (draft-first resolution, write-through for file-backed
+processes, draft promotion on `exportProcess` with an explicit-path
+rejection), and its `PrcErrorCode` is now `StoreErrorCode |
+EditingErrorCode`. New tests: `test/prc/editing.test.ts`,
+`test/prc/layout.test.ts`, and `test/prc/store-create-change.test.ts`.
+A metamodel finding shaped the property set: bpmn-moddle declares
+`isInterrupting` only on `bpmn:StartEvent`, so the core accepts it
+there only (other types are a structured `unsupported-property`
+error rather than a silently dropped value). The full Phase 100 gate
+chain is green on Node 26 (223 tests, 94.46% statement coverage).
 
 #### 2026-11-07T08:40:00.000Z - Created
 
@@ -140,6 +166,76 @@ issue #17 and QA pairs 1.0010/1.0050/1.0060/1.0070.
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-07T14:02:00.000Z - Generated element ids start at `<prefix>_1`
+
+Scoped decision 2, refined during implementation: generated ids are
+`<type-prefix>_<n>` with the smallest free n starting at 1 (never the
+bare prefix, e.g. the first generated task is `task_1`), respecting
+existing ids of the same family. The bare-prefix variant was dropped
+because it could collide with a caller-supplied bare id and reads
+less consistently in serialized XML.
+
+#### 2026-11-07T14:01:00.000Z - Coordinate rules for add/update
+
+Coordinates are non-negative integers (NaN/Infinity/fractional/negative
+are `invalid-coordinates`), honored as-is (never grid-snapped).
+`add-element` needs both or neither of x/y (an omitted pair is grid
+auto-placed); `update-element` accepts a single axis when the element
+already has a DI shape (the other axis is kept) and fails otherwise.
+
+#### 2026-11-07T14:00:00.000Z - connect auto-places missing endpoint DI
+
+`connect` emits its DI edge from the two endpoint shapes; an endpoint
+without a shape (e.g. an imported document without DI) gets a
+grid-placed one as part of the connect, so every created or
+repositioned element always carries DI (REQ-003) while pre-existing
+DI is never modified.
+
+#### 2026-11-07T13:59:00.000Z - update-element rejects x/y on sequence flows
+
+Flow geometry belongs to `connect` (edge waypoints between shapes);
+`update-element` with x/y on a sequence flow id is a structured
+`unsupported-property` error rather than an ill-defined re-route.
+
+#### 2026-11-07T13:58:00.000Z - Draft export to an explicit target path is rejected
+
+`exportProcess` of a session draft with an explicit target path returns
+a structured `draft-export-explicit-path` error: the own
+`prc-<uuid>-<slug>.bpmn` write is the promotion, and an extra copy
+would leave two files behind one process (breaking the single source
+of truth, QA 1.0020). The draft stays intact and addressable after a
+rejected promotion.
+
+#### 2026-11-07T13:57:00.000Z - Process id derived from the create name
+
+`createProcess` derives the `bpmn:Process` id from the given name: the
+slugified name, prefixed `process-` when it would start with a digit
+(BPMN ids are NCNames), and the constant `process` when the name
+slugifies to nothing. The export slug derives from that id via
+`deriveSlug` (the fallback filename stem never triggers because the
+id is always slug-shaped).
+
+#### 2026-11-07T13:56:00.000Z - update-element property set: name + isInterrupting (start events)
+
+Scoped decision 1: beyond `name` (any flow element, nodes and sequence
+flows alike), the documented simple-property set is `isInterrupting`
+(a boolean) on start events only. During implementation it turned out
+the bpmn-moddle metamodel declares `isInterrupting` on
+`bpmn:StartEvent` only (default `true`, so a value equal to the
+default is omitted from the XML, as BPMN semantics intend); setting it
+on any other element type would be silently dropped by the serializer,
+so those combinations are a structured `unsupported-property` error
+instead. Every other property/element combination stays unsupported.
+
+#### 2026-11-07T13:55:00.000Z - Caller-supplied element ids: optional, validated, generated otherwise
+
+Scoped decision 2 (REQ-004): `add-element` and the initial elements of
+`createProcess` accept an OPTIONAL id. When omitted (or empty) a
+unique id is generated (element-type prefix plus incrementing numeric
+suffix, e.g. `task_1`, `startEvent_2`); when supplied it must fit the
+BPMN id shape (`invalid-id` otherwise) and must not already exist
+anywhere in the document, model or DI (`duplicate-element-id`).
 
 #### 2026-11-07T09:45:00.000Z - Element set: sequence flows only
 
