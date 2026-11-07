@@ -105,9 +105,9 @@ GitHub issue #17.
 
 #### Phase 110: Tool adapters
 
-- [ ] Task 110.100: Register the `create` tool (zod schema, description per REQ-006) and the `change` tool (discriminated action union).
-- [ ] Task 110.110: Update the handshake/tool-surface tests and add spawn-level e2e legs (ACC-001..ACC-003).
-- [ ] Task 110.120: Verify every REQ-007 error leg returns `isError` single-line and keeps the server usable.
+- [x] Task 110.100: Register the `create` tool (zod schema, description per REQ-006) and the `change` tool (discriminated action union).
+- [x] Task 110.110: Update the handshake/tool-surface tests and add spawn-level e2e legs (ACC-001..ACC-003).
+- [x] Task 110.120: Verify every REQ-007 error leg returns `isError` single-line and keeps the server usable.
 
 #### Phase 120: Gates and docs
 
@@ -119,22 +119,60 @@ GitHub issue #17.
 
 ### Current Status
 
-**As of 2026-11-07 (Phase 100 complete)**: The core editing and grid
-layout modules are implemented and the `PrcStore` now resolves
-session drafts (draft-first lookup, write-through change, draft
-promotion on export), all under `src/prc/` (REQ-008) with the full
-unit-test coverage for the editing, layout, and draft operations
-(REQ-001..REQ-005, REQ-007). The Phase 100 gate chain (`npm ci`,
-`lint`, `format:check`, `build`, `test --coverage`) is green on Node
-26 (223 tests, 94%+ statement coverage). Next is Phase 110 (the
-`create`/`change` tool adapters over this core, the handshake/e2e
-legs, and the REQ-007 error-leg verification), then Phase 120 (gates
-and docs). After this feat merges, continue with feat-18, feat-19,
+**As of 2026-11-07 (Phase 110 complete)**: The `create` and `change`
+tools are registered over the Phase 100 core (the flat advertised
+input, the discriminated-union operation assembly in the handler,
+the 1:1 result mapping), the handshake lists all four tools, and the
+spawn-level e2e legs prove ACC-001..ACC-003 and ACC-005 (every
+REQ-007 error leg single-line `isError`, the server and the draft
+state intact) over real stdio; the in-process adapter legs cover
+the JSON shapes, the write-through persistence (REQ-005), and the
+re-read note (REQ-004) for `change`. No core module changed. The
+Phase 110 gate chain (`npm ci`, `lint`, `format:check`, `build`,
+`test --coverage`) is green on Node 26 (238 tests, 94.64% statement
+coverage). Next is Phase 120 (the full gate re-run and drift
+checks, the C4 container description update, and the PR against
+issue #17); after this feat merges, continue with feat-18, feat-19,
 and feat-20 (all planned on `dev`), in that order.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-07T18:55:00.000Z - Phase 110 complete (create/change tool adapters, e2e legs)
+
+Landed the Phase 110 deliverables. `src/server.ts` registers the
+`create` tool (a name plus the optional initial elements in; the
+draft identity JSON out) and the `change` tool (a uuid plus the
+top-level action parameter per QA 1.0010 in; the flattened
+operation detail out), both thin adapters over the Phase 100
+`PrcStore` surface: zod validates the shape (unknown action and
+element type, negative coordinates, empty name rejected at the MCP
+layer), the handler re-parses the change arguments against the
+`EDITING_OPERATION` discriminated union (the field-for-field mirror
+of the core's `EditingOperation`), store failures map 1:1 to
+single-line `isError` results, and successes map to flat JSON (the
+change detail spread one level deep, its redundant `ok` dropped,
+the re-read note convention kept). No core module changed. Tests:
+the handshake assertion now lists exactly `change`, `create`,
+`export`, `import` (in-process and spawn, feat-17 ACC-004); new
+in-process adapter legs cover the create/change JSON shapes, the
+family-aware generated ids, write-through for registered processes
+(REQ-005), the change re-read note (REQ-004), and the REQ-007 error
+legs (MCP-layer and core structured errors alike, single-line, the
+draft left usable); new spawn e2e legs over real stdio prove
+ACC-001 (create/add/add/connect/export round trip, re-parse,
+element set, non-overlapping grid DI), ACC-002 (rename, delete
+cascade, condition expression in the serialized XML), ACC-003
+(standard sizes, first-free-slot grid placement, explicit
+coordinates unchanged), and ACC-005 (the full error-leg sequence
+followed by a successful change, the export promotion, and a
+write-through update in the same session). One SDK finding shaped
+the test assertions: the client prefixes MCP-layer validation
+failures with `MCP error -32602: ` (still single-line) and renders
+numeric issue paths in bracket form (`elements[0].type`). The full
+Phase 110 gate chain is green on Node 26 (238 tests, 94.64%
+statement coverage; `server.ts` at 100% statements).
 
 #### 2026-11-07T14:05:00.000Z - Phase 100 complete (core editing, grid layout, session drafts)
 
@@ -166,6 +204,46 @@ issue #17 and QA pairs 1.0010/1.0050/1.0060/1.0070.
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-07T18:55:00.000Z - change input: flat advertised shape, discriminated-union parse in the handler
+
+Scoped decision (Task 110.100): the `change` tool advertises a flat
+top-level input (uuid, the action enum, every per-action field
+optional) -- QA 1.0010 makes `action` a top-level parameter, and
+this MCP SDK version degrades a non-object input schema to an empty
+object schema in `tools/list` (verified against the SDK source),
+which would leave the agent blind to the tool's parameters. The
+handler re-parses the arguments against `EDITING_OPERATION`, a real
+`z.discriminatedUnion('action', ...)` mirroring the core's
+`EditingOperation` field for field: its parse output is exactly the
+operation the store takes (no casting), a missing per-action field
+is a single-line `isError` worded like the SDK's own MCP-layer
+validation error, and the unknown-action / unknown-element-type /
+negative-coordinate rejections already happen at the MCP layer
+through the flat shape's enums and coordinate guards.
+
+#### 2026-11-07T18:52:00.000Z - create name blank-guard: min(1) at the MCP layer, the core owns "non-blank"
+
+Scoped decision (Task 110.100): `create`'s name is
+`z.string().min(1)` -- the empty string is rejected at the MCP
+layer, and a whitespace-only name flows to the core's structured
+`invalid-property` error ("the process name must be a non-blank
+string"), so the semantic blank check has a single owner (the core,
+implemented and unit-tested in Phase 100). Both legs are single-line
+`isError` results, proven over the wire.
+
+#### 2026-11-07T18:50:00.000Z - change success JSON: detail flattened one level deep, redundant `ok` dropped
+
+Scoped decision (Task 110.100): the `change` success payload is
+`{ uuid, action, ...detail, persisted, outOfBandReRead, note? }`
+with the operation detail (ids, positions, or removal counts)
+spread one level deep, consistent with the import/export style; the
+detail's `ok: true` flag is dropped because the tool result already
+conveys success through the absence of `isError`. `connect` exposes
+its optional `name` as input (the core treats a blank name as
+absent); its success detail stays the core's
+`flowId`/`sourceId`/`targetId`/`conditionSet` (the flow name is not
+echoed -- no core change for it).
 
 #### 2026-11-07T14:02:00.000Z - Generated element ids start at `<prefix>_1`
 
