@@ -39,7 +39,7 @@ manage only the JS/TS components).
 
 ## 2. Development setup
 
-Prerequisites: Node.js **24** (LTS), npm **11**, `git`, and
+Prerequisites: Node.js **26** (LTS), npm **11**, `git`, and
 `pre-commit` (any install method; `uvx pre-commit` works without a
 global install).
 
