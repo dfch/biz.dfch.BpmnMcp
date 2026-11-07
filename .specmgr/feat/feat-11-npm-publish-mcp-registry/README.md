@@ -4,7 +4,7 @@ created: '2026-11-01T13:06:50.041+01:00'
 id: feat-11-npm-publish-mcp-registry
 status: planning
 type: feat
-updated: '2026-11-01T13:18:15.727+01:00'
+updated: '2026-11-07T07:37:20.209+01:00'
 version: 1.0.0
 ---
 
@@ -105,7 +105,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 - [ ] Task 100.110: Create `apps/mcp-server/scripts/prepare-publish.mjs` (SPDX header) implementing the REQ-002 `prepack` pipeline (build → shebang + exec bit on `dist/index.js` → root `LICENSE` copied into the package directory), wired as the `prepack` script, with unit tests (shebang idempotence, LICENSE byte-identity, sources untouched).
 - [ ] Task 100.120: Add the tarball-set test leg: `npm pack` contents equal exactly the REQ-003 set (fails on any extra or missing file).
 - [ ] Task 100.130: Add the clean-environment packed-artifact leg: install the tarball into a temporary prefix, launch the `bin`, MCP handshake asserts exactly the `import` and `export` tools (REQ-004).
-- [ ] Task 100.140: Write the package `README.md`: usage (the `npx` and `node` invocations), the MCP client config snippet, the five `BPMN_MCP_*` variables, the node >= 24 requirement, the AGPL note.
+- [ ] Task 100.140: Write the package `README.md`: usage (the `npx` and `node` invocations), the MCP client config snippet, the five `BPMN_MCP_*` variables, the node >= 26 requirement (per DEC 5185d651-7283-4b1d-87e0-272795d15edf), the AGPL note.
 - [ ] Task 100.150: Run all gates from the repository root (`npm ci`, `lint`, `format:check`, `build`, `test --coverage`, `audit`, `uvx pre-commit run --all-files`), fixing findings.
 
 #### Phase 110: The MCP Registry manifest and drift gate
