@@ -2,7 +2,7 @@
 classification: null
 created: '2026-11-07T08:55:38.554+01:00'
 id: feat-17-create-change-tools
-status: planning
+status: review
 type: feat
 updated: '2026-11-07T09:56:22.910+01:00'
 version: 1.0.0
@@ -113,28 +113,28 @@ GitHub issue #17.
 
 - [x] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier).
 - [x] Task 120.110: Update the C4 container description (the tool list) and this feat's Progress section.
-- [ ] Task 120.120: Open the PR referencing issue #17.
+- [x] Task 120.120: Open the PR referencing issue #17.
 
 ## Progress
 
 ### Current Status
 
-**As of 2026-11-07 (Phase 120 complete)**: All implementation phases
-(100/110/120) are done. The `create` and `change` tools ship over the
-Phase 100 core (session drafts, grid-placed DI, write-through
-persistence); the Phase 120 gate chain (`npm ci`, `lint`,
-`format:check`, `build`, `test --coverage`) is green on Node 26
-(238 tests, 94.64% statement coverage) with no drift found, and the
-C4 container description now reflects the four-tool surface
-(create, change, import, export) plus the session-draft and
-editing/layout core. The feature is ready for review; the PR
-referencing issue #17 will be opened when this feat's status flips
-to `review`. After this feat merges, continue with feat-18, feat-19,
-and feat-20 (all planned on `dev`), in that order.
+**As of 2026-11-07 (status `review`)**: All three implementation
+phases (100/110/120) are done and the full gate chain is green on
+Node 26 (238 tests, 94.64% statement coverage). The PR referencing
+GitHub issue #17 is opened from this branch; after this feat merges,
+continue with feat-18, feat-19, and feat-20, in that order.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-07T19:30:00.000Z - Marked ready for review
+
+All three implementation phases (100/110/120) are complete and the
+full gate chain is green on Node 26 (238 tests, 94.64% statement
+coverage). The PR referencing GitHub issue #17 is opened from this
+branch; the feat's status is now `review`.
 
 #### 2026-11-07T19:11:00.000Z - Phase 120 complete (gates green on Node 26, C4 tool surface corrected)
 
