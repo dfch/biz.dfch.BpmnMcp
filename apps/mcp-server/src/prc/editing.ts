@@ -791,7 +791,7 @@ function findInContainer(container: ModdleElement, id: string): FoundElement | u
     if (element.id === id) {
       return { element, container };
     }
-    if (element.$type === 'bpmn:SubProcess') {
+    if (element.$instanceOf('bpmn:SubProcess') === true) {
       const nested = findInContainer(element, id);
       if (nested !== undefined) {
         return nested;
@@ -831,7 +831,7 @@ function collectReferencingFlowsInContainer(
     ) {
       result.push({ flow: element, container });
     }
-    if (element.$type === 'bpmn:SubProcess') {
+    if (element.$instanceOf('bpmn:SubProcess') === true) {
       collectReferencingFlowsInContainer(element, nodeId, result);
     }
   }

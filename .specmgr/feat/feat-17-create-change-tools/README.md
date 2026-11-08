@@ -121,20 +121,58 @@ GitHub issue #17.
 - [x] Task 130.110: Close the negative-leg test gaps G1 (failed change on a file-backed process leaves the file byte-identical), G2 (change after out-of-band corruption returns structured `not-bpmn`, file untouched), G3 (`sizeForElement` gateway-family fallback).
 - [x] Task 130.120: Plan hygiene and honest descriptions — tick ACC-001..ACC-005, document ignored foreign per-action fields (I1), note the intermediate-catch-event spec incompleteness (I4), and record the deferred improvements (I2, I3, I5, I6) in an Updates entry.
 
+#### Phase 140: Review finding I2 (sub-process family reachability)
+
+- [x] Task 140.100: Make the editing container walk family-aware (`$instanceOf('bpmn:SubProcess')` instead of the exact type) so the inner elements of imported `bpmn:AdHocSubProcess`/`bpmn:Transaction` containers are reachable by `updateElement`/`connect`/`deleteElement`, with the `cross-scope-connect` guard preserved, plus tests.
+
 ## Progress
 
 ### Current Status
 
-**As of 2026-11-07 (status `review`)**: All three implementation
-phases (100/110/120) and the post-implementation review-fix phase
-(130) are done and the full gate chain is green on Node 26 (243
-tests, 95.04% statement coverage). The PR referencing GitHub issue
-#17 is opened from this branch; after this feat merges, continue
-with feat-18, feat-19, and feat-20, in that order.
+**As of 2026-11-08 (status `review`)**: All three implementation
+phases (100/110/120), the post-implementation review-fix phase
+(130), and Phase 140 (the fix of review finding I2: sub-process
+family reachability in the editing walk) are done and the full gate
+chain is green on Node 26 (247 tests, 95.04% statement coverage).
+Findings I3, I5, and I6 remain deferred by decision. The PR
+referencing GitHub issue #17 is opened from this branch; after this
+feat merges, continue with feat-18, feat-19, and feat-20, in that
+order.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-08T14:25:45.000Z - Phase 140 complete (review finding I2: sub-process family reachability in the editing walk)
+
+Per the user decision of 2026-11-08, I2 is fixed now and I3, I5, and
+I6 remain deferred. The production change is two type tests in
+`src/prc/editing.ts`: the recursive container walk
+(`findInContainer`, the element/flow lookup behind
+`updateElement`/`connect`/`deleteElement`) and the delete cascade's
+referencing-flow walk (`collectReferencingFlowsInContainer`) now
+recurse into any element for which
+`element.$instanceOf('bpmn:SubProcess') === true` (the family form
+`layout.ts` already uses for its gateway lookup) instead of only the
+exact `bpmn:SubProcess`, so inner elements of imported
+`bpmn:AdHocSubProcess` and `bpmn:Transaction` containers are
+reachable. The `cross-scope-connect` guard needed no change: it
+compares the containers the walk returns, and the family-aware walk
+returns the imported container itself as the inner elements'
+container, so inner-vs-top-level (both directions) and
+across-container connects still fail with the structured error while
+connects within one imported container succeed and land their flow
+in that container. New tests in `test/prc/editing.test.ts` (one new
+`SUB_PROCESS_FAMILY_XML` fixture, four legs): rename of an inner
+adHocSubProcess element, delete of an inner element with its
+referencing inner flow removed from the sub-process scope, connect
+inside the same imported container (adHocSubProcess and transaction,
+the flow scoped into the container and its DI edge emitted), and the
+cross-scope guard (inner→top-level, top-level→inner, and across the
+two containers, with the tree left untouched). The full gate chain
+is green on Node 26 (247 tests, 95.04% statement coverage; the
+pre-existing 243 all still pass, including the exact-
+`bpmn:SubProcess` nested legs).
 
 #### 2026-11-07T20:53:00.000Z - Phase 130 complete (post-implementation review findings: E1 fixed in both layers, G1/G2/G3 test legs added, plan hygiene)
 
@@ -265,6 +303,20 @@ issue #17 and QA pairs 1.0010/1.0050/1.0060/1.0070.
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-08T14:25:45.000Z - Review finding I2 pulled forward and fixed; I3, I5, I6 remain deferred
+
+User decision 2026-11-08: of the improvements Phase 130 recorded as
+deferred, I2 (sub-process family reachability) is fixed in this
+phase (Phase 140) because feat-18's parse tool will surface the
+generic, metamodel-driven element inventory, which already lists the
+inner elements of imported AdHocSubProcess/Transaction containers --
+the inconsistency between "listed by the inventory" and "unreachable
+by the change operations" would ship otherwise. I3 (the DI
+operations address only the first diagram's plane), I5 (`findFreeSlot`
+is O(n^2) and throws raw on grid exhaustion instead of a structured
+code), and I6 (a no-op `update-element` still rewrites the own file
+with `persisted: true`) remain explicitly deferred.
 
 #### 2026-11-07T20:53:00.000Z - E1 adapter constraint: `change`'s uuid is a v4-uuid regex at the zod layer
 

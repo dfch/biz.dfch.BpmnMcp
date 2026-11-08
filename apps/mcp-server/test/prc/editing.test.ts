@@ -63,6 +63,27 @@ const NESTED_XML = `<?xml version="1.0" encoding="UTF-8"?>
   </bpmn:process>
 </bpmn:definitions>`;
 
+/**
+ * A parsed document with imported sub-process family containers: an
+ * adHocSubProcess (inner start event, task, and the flow between them)
+ * and a transaction (inner task and end event), plus a top-level task.
+ */
+const SUB_PROCESS_FAMILY_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="D">
+  <bpmn:process id="p" isExecutable="false">
+    <bpmn:task id="outer" />
+    <bpmn:adHocSubProcess id="adhoc">
+      <bpmn:startEvent id="adhoc-start" />
+      <bpmn:task id="adhoc-task" />
+      <bpmn:sequenceFlow id="adhoc-flow" sourceRef="adhoc-start" targetRef="adhoc-task" />
+    </bpmn:adHocSubProcess>
+    <bpmn:transaction id="txn">
+      <bpmn:task id="txn-task" />
+      <bpmn:endEvent id="txn-end" />
+    </bpmn:transaction>
+  </bpmn:process>
+</bpmn:definitions>`;
+
 /** Narrows a createProcess result to its success side. */
 function expectCreated(result: CreateProcessResult): Extract<CreateProcessResult, { ok: true }> {
   expect(result.ok).toBe(true);
@@ -583,5 +604,75 @@ describe('deleteElement (feat-17 REQ-002, design note "Delete semantics")', () =
     expectEditingFailure(deleteElement(tree, { id: 'shape-task' }), 'unknown-element-id');
     // The tree is untouched after a failed delete.
     expect(getShapeBounds(tree, 'review-task')).toEqual({ x: 252, y: 80, width: 100, height: 80 });
+  });
+});
+
+describe('sub-process family reachability (feat-17 Phase 140, review finding I2)', () => {
+  it('renames an inner element of an imported adHocSubProcess (family-aware lookup)', async () => {
+    const tree = (await parseBpmn(SUB_PROCESS_FAMILY_XML)).rootElement;
+    const updated = expectUpdated(updateElement(tree, { id: 'adhoc-task', name: 'Inner work' }));
+    expect(updated.name).toBe('Inner work');
+    const xml = await serializeBpmn(tree);
+    expect(xml).toContain('name="Inner work"');
+  });
+
+  it('deletes an inner element of an imported adHocSubProcess with its referencing inner flow', async () => {
+    const tree = (await parseBpmn(SUB_PROCESS_FAMILY_XML)).rootElement;
+    const deleted = expectDeleted(deleteElement(tree, { id: 'adhoc-task' }));
+    expect(deleted).toEqual({
+      ok: true,
+      id: 'adhoc-task',
+      kind: 'element',
+      removedFlows: 1,
+      removedDiShapes: 0,
+      removedDiEdges: 0,
+    });
+    const process = tree.rootElements[0] as ModdleElement;
+    const adhoc = process.flowElements.find((element: ModdleElement) => element.id === 'adhoc') as ModdleElement;
+    expect(adhoc.flowElements.map((element: ModdleElement) => element.id)).toEqual(['adhoc-start']);
+    // The top-level process and the sibling transaction are untouched.
+    expect(process.flowElements.map((element: ModdleElement) => element.id)).toEqual(['outer', 'adhoc', 'txn']);
+  });
+
+  it('connects two elements inside the same imported container (adHocSubProcess and transaction)', async () => {
+    const tree = (await parseBpmn(SUB_PROCESS_FAMILY_XML)).rootElement;
+    const adhocConnected = expectConnected(connect(tree, { sourceId: 'adhoc-start', targetId: 'adhoc-task' }));
+    expect(adhocConnected.flowId).toBe('sequenceFlow_1');
+    const process = tree.rootElements[0] as ModdleElement;
+    const adhoc = process.flowElements.find((element: ModdleElement) => element.id === 'adhoc') as ModdleElement;
+    const adhocFlow = adhoc.flowElements.find(
+      (element: ModdleElement) => element.id === adhocConnected.flowId,
+    ) as ModdleElement;
+    expect(adhocFlow.sourceRef.id).toBe('adhoc-start');
+    expect(adhocFlow.targetRef.id).toBe('adhoc-task');
+    // The flow lives in the sub-process scope, not in the top-level process.
+    expect(process.flowElements.map((element: ModdleElement) => element.id)).not.toContain(adhocConnected.flowId);
+    // The connect emitted DI for the previously shape-less endpoints.
+    expect(getEdgeForElement(tree, adhocConnected.flowId)).toBeDefined();
+
+    const txnConnected = expectConnected(connect(tree, { sourceId: 'txn-task', targetId: 'txn-end' }));
+    expect(txnConnected.flowId).toBe('sequenceFlow_2');
+    const txn = process.flowElements.find((element: ModdleElement) => element.id === 'txn') as ModdleElement;
+    expect(txn.flowElements.map((element: ModdleElement) => element.id)).toContain(txnConnected.flowId);
+  });
+
+  it('keeps the cross-scope-connect guard for imported containers (both directions, across containers)', async () => {
+    const tree = (await parseBpmn(SUB_PROCESS_FAMILY_XML)).rootElement;
+    const innerToOuter = connect(tree, { sourceId: 'adhoc-task', targetId: 'outer' });
+    expectEditingFailure(innerToOuter, 'cross-scope-connect');
+    const outerToInner = connect(tree, { sourceId: 'outer', targetId: 'adhoc-task' });
+    expectEditingFailure(outerToInner, 'cross-scope-connect');
+    // Two different imported containers are separate scopes, too.
+    const acrossContainers = connect(tree, { sourceId: 'adhoc-task', targetId: 'txn-task' });
+    expectEditingFailure(acrossContainers, 'cross-scope-connect');
+    // The rejected connects created nothing.
+    const process = tree.rootElements[0] as ModdleElement;
+    const adhoc = process.flowElements.find((element: ModdleElement) => element.id === 'adhoc') as ModdleElement;
+    expect(adhoc.flowElements.map((element: ModdleElement) => element.id)).toEqual([
+      'adhoc-start',
+      'adhoc-task',
+      'adhoc-flow',
+    ]);
+    expect(process.flowElements.map((element: ModdleElement) => element.id)).toEqual(['outer', 'adhoc', 'txn']);
   });
 });
