@@ -58,6 +58,25 @@ interface ExportSuccessPayload {
   note?: string;
 }
 
+/** The `create` tool result's success JSON (feat-17 REQ-001). */
+interface CreateSuccessPayload {
+  uuid: string;
+  name: string;
+  processId: string;
+  slug: string;
+  elementCount: number;
+}
+
+/** The `change` tool result's success JSON (feat-17 REQ-002; the detail fields vary per action). */
+interface ChangeSuccessPayload {
+  uuid: string;
+  action: string;
+  persisted: boolean;
+  outOfBandReRead: boolean;
+  note?: string;
+  [detail: string]: unknown;
+}
+
 interface LogRecord {
   level: 'info' | 'warn' | 'error';
   event: string | undefined;
@@ -101,6 +120,23 @@ async function importSuccess(client: Client, path: string): Promise<ImportSucces
   const outcome = await callTool(client, 'import', { path });
   expect(outcome.isError).toBe(false);
   return JSON.parse(outcome.text) as ImportSuccessPayload;
+}
+
+/** Calls `create` and narrows the success JSON (the test expects success). */
+async function createSuccess(
+  client: Client,
+  args: { name: string; elements?: Record<string, unknown>[] },
+): Promise<CreateSuccessPayload> {
+  const outcome = await callTool(client, 'create', args);
+  expect(outcome.isError).toBe(false);
+  return JSON.parse(outcome.text) as CreateSuccessPayload;
+}
+
+/** Calls `change` and narrows the success JSON (the test expects success). */
+async function changeSuccess(client: Client, args: Record<string, unknown>): Promise<ChangeSuccessPayload> {
+  const outcome = await callTool(client, 'change', args);
+  expect(outcome.isError).toBe(false);
+  return JSON.parse(outcome.text) as ChangeSuccessPayload;
 }
 
 /** One element of the ACC-007 inventory: the BPMN id, type, and name. */
@@ -323,9 +359,10 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
     });
   });
 
-  it('lists exactly the import and export tools (ACC-008)', async () => {
+  it('lists exactly the four tools: change, create, export, import (feat-17 ACC-004)', async () => {
+    // The handshake lists create and change in addition to the existing tools.
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name).sort()).toEqual(['export', 'import']);
+    expect(tools.map((tool) => tool.name).sort()).toEqual(['change', 'create', 'export', 'import']);
   });
 
   describe('the import tool (REQ-005, REQ-007, ACC-002/ACC-003/ACC-004)', () => {
@@ -471,6 +508,254 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
     });
   });
 
+  describe('the create tool (feat-17 REQ-001, REQ-006, ACC-001 in-process leg)', () => {
+    it('creates an empty session draft: JSON with the v4 uuid, the derived identity, no file', async () => {
+      const parsed = await createSuccess(client, { name: 'Order Intake' });
+
+      expect(parsed.uuid).toMatch(UUID_V4_SHAPE);
+      expect(parsed.name).toBe('Order Intake');
+      expect(parsed.processId).toBe('order-intake');
+      expect(parsed.slug).toBe('order-intake');
+      expect(parsed.elementCount).toBe(0);
+      // The draft is in memory only: no file, no prc directory.
+      expect(existsSync(resolveDocsPrcDir())).toBe(false);
+    });
+
+    it('creates a process with initial elements: the generated ids stay family-aware (REQ-004)', async () => {
+      const parsed = await createSuccess(client, {
+        name: 'Seeded',
+        elements: [{ type: 'start-event' }, { type: 'task', name: 'Work' }],
+      });
+
+      expect(parsed.elementCount).toBe(2);
+      const added = await changeSuccess(client, { uuid: parsed.uuid, action: 'add-element', type: 'task' });
+
+      // The seeded task took task_1; the next generated task is task_2.
+      expect(added).toMatchObject({ id: 'task_2', type: 'task', persisted: false });
+    });
+
+    it('maps a whitespace-only name to a single-line isError result, registering nothing (REQ-007)', async () => {
+      const outcome = await callTool(client, 'create', { name: '   ' });
+
+      expect(outcome.isError).toBe(true);
+      expect(outcome.text).toBe('the process name must be a non-blank string');
+      expect(outcome.text).not.toContain('\n');
+      expect(existsSync(resolveDocsPrcDir())).toBe(false);
+    });
+
+    it('rejects an empty name, an unknown element type, and negative coordinates via zod (single-line isError)', async () => {
+      const emptyName = await callTool(client, 'create', { name: '' });
+      expect(emptyName.isError).toBe(true);
+      expect(emptyName.text).not.toContain('\n');
+      expect(emptyName.text).toMatch(/at name/);
+
+      const unknownType = await callTool(client, 'create', { name: 'P', elements: [{ type: 'warp-gate' }] });
+      expect(unknownType.isError).toBe(true);
+      expect(unknownType.text).not.toContain('\n');
+      expect(unknownType.text).toMatch(/at elements\[0\]\.type/);
+
+      const negativeCoord = await callTool(client, 'create', {
+        name: 'P',
+        elements: [{ type: 'task', x: -5, y: 10 }],
+      });
+      expect(negativeCoord.isError).toBe(true);
+      expect(negativeCoord.text).not.toContain('\n');
+      expect(negativeCoord.text).toMatch(/at elements\[0\]\.x/);
+
+      expect(existsSync(resolveDocsPrcDir())).toBe(false);
+    });
+  });
+
+  describe('the change tool (feat-17 REQ-002, REQ-005, REQ-007, ACC-002/ACC-005 in-process leg)', () => {
+    it('adds, updates, connects, and deletes on a draft: the flattened detail JSON, persisted false (ACC-002)', async () => {
+      const created = await createSuccess(client, { name: 'Draft Flow' });
+
+      const start = await changeSuccess(client, { uuid: created.uuid, action: 'add-element', type: 'start-event' });
+      expect(start).toMatchObject({
+        uuid: created.uuid,
+        action: 'add-element',
+        id: 'startEvent_1',
+        type: 'start-event',
+        persisted: false,
+        outOfBandReRead: false,
+      });
+      expect(start.note).toBeUndefined();
+
+      const task = await changeSuccess(client, {
+        uuid: created.uuid,
+        action: 'add-element',
+        type: 'task',
+        name: 'First',
+        x: 120,
+        y: 100,
+      });
+      expect(task).toMatchObject({ id: 'task_1', name: 'First', x: 120, y: 100, persisted: false });
+
+      const renamed = await changeSuccess(client, {
+        uuid: created.uuid,
+        action: 'update-element',
+        id: 'task_1',
+        name: 'Renamed',
+      });
+      expect(renamed).toMatchObject({ action: 'update-element', id: 'task_1', name: 'Renamed' });
+
+      const flow = await changeSuccess(client, {
+        uuid: created.uuid,
+        action: 'connect',
+        sourceId: 'startEvent_1',
+        targetId: 'task_1',
+        conditionExpression: 'approved == true',
+      });
+      expect(flow).toMatchObject({
+        action: 'connect',
+        flowId: 'sequenceFlow_1',
+        sourceId: 'startEvent_1',
+        targetId: 'task_1',
+        conditionSet: true,
+      });
+
+      const deleted = await changeSuccess(client, { uuid: created.uuid, action: 'delete-element', id: 'task_1' });
+      expect(deleted).toMatchObject({
+        action: 'delete-element',
+        id: 'task_1',
+        kind: 'element',
+        removedFlows: 1,
+        removedDiShapes: 1,
+        removedDiEdges: 1,
+      });
+    });
+
+    it('is write-through for a registered process: the own file carries the mutation (REQ-005)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const imported = await importSuccess(client, source);
+
+      const changed = await changeSuccess(client, {
+        uuid: imported.uuid,
+        action: 'add-element',
+        type: 'task',
+        name: 'Extra step',
+      });
+
+      expect(changed).toMatchObject({ id: 'task_1', persisted: true, outOfBandReRead: false });
+      expect(readFileSync(imported.path, 'utf8')).toContain('id="task_1"');
+    });
+
+    it('maps an unknown uuid to a single-line isError result (ACC-005)', async () => {
+      const unknown = 'ffffffff-ffff-4fff-afff-ffffffffffff';
+
+      const outcome = await callTool(client, 'change', { uuid: unknown, action: 'delete-element', id: 'x' });
+
+      expect(outcome.isError).toBe(true);
+      expect(outcome.text).toBe(`process ${unknown} is not registered`);
+      expect(outcome.text).not.toContain('\n');
+    });
+
+    it('rejects an unknown action, an unknown element type, and negative coordinates via zod (ACC-005)', async () => {
+      const created = await createSuccess(client, { name: 'P' });
+
+      const unknownAction = await callTool(client, 'change', { uuid: created.uuid, action: 'teleport' });
+      expect(unknownAction.isError).toBe(true);
+      expect(unknownAction.text).not.toContain('\n');
+      expect(unknownAction.text).toMatch(/at action/);
+
+      const unknownType = await callTool(client, 'change', {
+        uuid: created.uuid,
+        action: 'add-element',
+        type: 'warp-gate',
+      });
+      expect(unknownType.isError).toBe(true);
+      expect(unknownType.text).not.toContain('\n');
+      expect(unknownType.text).toMatch(/at type/);
+
+      const negativeCoord = await callTool(client, 'change', {
+        uuid: created.uuid,
+        action: 'add-element',
+        type: 'task',
+        x: -5,
+        y: 10,
+      });
+      expect(negativeCoord.isError).toBe(true);
+      expect(negativeCoord.text).not.toContain('\n');
+      expect(negativeCoord.text).toMatch(/at x/);
+    });
+
+    it('rejects a missing per-action field with a single-line isError result (ACC-005)', async () => {
+      const created = await createSuccess(client, { name: 'P' });
+
+      const missingTarget = await callTool(client, 'change', {
+        uuid: created.uuid,
+        action: 'connect',
+        sourceId: 'a',
+      });
+
+      expect(missingTarget.isError).toBe(true);
+      expect(missingTarget.text).not.toContain('\n');
+      expect(missingTarget.text).toMatch(/targetId/);
+    });
+
+    it('maps the core editing errors to single-line isError results, leaving the draft usable (ACC-005)', async () => {
+      const created = await createSuccess(client, {
+        name: 'P',
+        elements: [{ type: 'start-event' }, { type: 'task' }],
+      });
+
+      const legs: { args: Record<string, unknown>; pattern: RegExp }[] = [
+        {
+          args: { uuid: created.uuid, action: 'connect', sourceId: 'ghost', targetId: 'task_1' },
+          pattern: /the source element "ghost" does not exist in the process/,
+        },
+        {
+          args: { uuid: created.uuid, action: 'connect', sourceId: 'startEvent_1', targetId: 'ghost' },
+          pattern: /the target element "ghost" does not exist in the process/,
+        },
+        {
+          args: { uuid: created.uuid, action: 'delete-element', id: 'ghost' },
+          pattern: /no element with id "ghost" in the process/,
+        },
+        {
+          args: { uuid: created.uuid, action: 'add-element', type: 'task', id: 'startEvent_1' },
+          pattern: /element id "startEvent_1" already exists in the process/,
+        },
+        {
+          args: { uuid: created.uuid, action: 'connect', sourceId: 'task_1', targetId: 'task_1' },
+          pattern: /source and target are the same element \("task_1"\)/,
+        },
+        {
+          args: { uuid: created.uuid, action: 'update-element', id: 'task_1', isInterrupting: false },
+          pattern: /isInterrupting is only supported on start events/,
+        },
+        {
+          args: { uuid: created.uuid, action: 'add-element', type: 'task', id: 'bad id' },
+          pattern: /the supplied element id "bad id" is not a valid BPMN id/,
+        },
+      ];
+      for (const { args, pattern } of legs) {
+        const outcome = await callTool(client, 'change', args);
+        expect(outcome.isError, JSON.stringify(args)).toBe(true);
+        expect(outcome.text, JSON.stringify(args)).toMatch(pattern);
+        expect(outcome.text, JSON.stringify(args)).not.toContain('\n');
+      }
+
+      // The draft state survived every failure: isInterrupting still
+      // works on the start event, and the draft still changes.
+      const interrupting = await changeSuccess(client, {
+        uuid: created.uuid,
+        action: 'update-element',
+        id: 'startEvent_1',
+        isInterrupting: false,
+      });
+      expect(interrupting).toMatchObject({ isInterrupting: false, persisted: false });
+
+      const survived = await changeSuccess(client, {
+        uuid: created.uuid,
+        action: 'update-element',
+        id: 'task_1',
+        name: 'Still here',
+      });
+      expect(survived).toMatchObject({ id: 'task_1', name: 'Still here' });
+    });
+  });
+
   describe('the out-of-band re-read (REQ-004, ACC-006, in-process leg)', () => {
     it('notes the re-read in the import result and the structured log', async () => {
       const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
@@ -507,8 +792,36 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
       const parsed = JSON.parse(outcome.text) as ExportSuccessPayload;
       expect(parsed.outOfBandReRead).toBe(true);
       expect(parsed.note).toMatch(/out of band/);
+      expect(parsed.note).not.toContain('\n');
       expect(readFileSync(explicitPath, 'utf8')).toContain('Second look');
       expect(readFileSync(explicitPath, 'utf8')).not.toContain('Review order');
+    });
+
+    it('notes the re-read in the change result and writes through over the modification (feat-17)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const imported = await importSuccess(client, source);
+      writeFileSync(
+        imported.path,
+        readFileSync(imported.path, 'utf8').replace('name="Order received"', 'name="Out of band"'),
+      );
+
+      const outcome = await callTool(client, 'change', {
+        uuid: imported.uuid,
+        action: 'update-element',
+        id: 'review-task',
+        name: 'Renamed',
+      });
+
+      expect(outcome.isError).toBe(false);
+      const parsed = JSON.parse(outcome.text) as ChangeSuccessPayload;
+      expect(parsed.outOfBandReRead).toBe(true);
+      expect(parsed.note).toMatch(/out of band/);
+      expect(parsed.note).not.toContain('\n');
+      expect(parsed.persisted).toBe(true);
+      // The write-through serialization carries both the modification
+      // (a different element) and the applied change.
+      expect(readFileSync(imported.path, 'utf8')).toContain('Out of band');
+      expect(readFileSync(imported.path, 'utf8')).toContain('name="Renamed"');
     });
   });
 

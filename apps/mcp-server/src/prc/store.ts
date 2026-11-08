@@ -6,6 +6,18 @@ import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promis
 import type { Stats } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { postcondition, precondition } from '../assertions.js';
+import {
+  addElement,
+  connect,
+  createProcess as buildProcess,
+  deleteElement,
+  updateElement,
+  type AddElementInput,
+  type EditingErrorCode,
+  type EditingOperation,
+  type EditingResult,
+  type EditingSuccess,
+} from './editing.js';
 import { buildPrcFilename, deriveSlug, generateUuid, parsePrcFilename } from './filename.js';
 import {
   BpmnParseError,
@@ -35,22 +47,42 @@ import {
  * and the checksum, and notes the out-of-band re-read in the result
  * and in the structured log.
  *
+ * Session drafts (feat-17, QA 1.0070/5.0010): a `create`d process
+ * has no file yet, so nothing to checksum -- it lives in the
+ * in-memory draft map (UUID to tree plus name/process id/slug) for
+ * the lifetime of the server process only. Every UUID-addressed
+ * operation resolves DRAFT-FIRST, then the on-disk registration; a
+ * draft lost on restart is recorded, not recovered. `export` of a
+ * draft is its promotion: the draft's own `prc-<uuid>-<slug>.bpmn`
+ * file is written and the draft moves from the draft map into the
+ * cache with the file's checksum (an explicit target path is
+ * rejected -- the own path is the promotion). `change` on a
+ * file-backed process is write-through (REQ-005): the mutation is
+ * serialized to the process's own file and the cached checksum
+ * updated, keeping the file the single source of truth; `change` on
+ * a draft mutates the in-memory draft tree only.
+ *
  * The operations return plain typed result objects (no MCP SDK
  * types -- the Phase 110 adapter maps them to tool results).
  * Expected failures (a missing source, a directory source,
- * unparseable XML, an unregistered UUID, a failed read/write) are
- * structured `ok: false` results; violated `precondition`/
- * `postcondition` invariants (REQ-009) throw and are never
- * swallowed -- a crashed invariant is a bug, not a tool error.
+ * unparseable XML, an unregistered UUID, a failed read/write, a
+ * malformed editing input) are structured `ok: false` results;
+ * violated `precondition`/`postcondition` invariants (REQ-009) throw
+ * and are never swallowed -- a crashed invariant is a bug, not a
+ * tool error.
  */
 
 /** The structured failure codes the store operations can return. */
-export type PrcErrorCode =
+export type PrcErrorCode = StoreErrorCode | EditingErrorCode;
+
+/** The file/import/export-side failure codes (the editing codes are `EditingErrorCode`). */
+type StoreErrorCode =
   | 'path-missing'
   | 'path-is-directory'
   | 'not-bpmn'
   | 'no-slug'
   | 'process-not-registered'
+  | 'draft-export-explicit-path'
   | 'read-failed'
   | 'write-failed';
 
@@ -92,6 +124,8 @@ export interface ExportSuccess {
   path: string;
   /** Whether the conditional re-read detected an out-of-band change (REQ-004). */
   outOfBandReRead: boolean;
+  /** Whether a session draft was promoted to the inventory (feat-17). */
+  promoted: boolean;
 }
 
 /** The `export` failure result. */
@@ -101,6 +135,56 @@ export interface ExportFailure {
 }
 
 export type ExportResult = ExportSuccess | ExportFailure;
+
+/** The `create` success result (feat-17 REQ-001): the draft's identity data. */
+export interface CreateSuccess {
+  ok: true;
+  /** The session-assigned process UUID (fresh v4). */
+  uuid: string;
+  /** The process name as given. */
+  name: string;
+  /** The derived `bpmn:Process` id. */
+  processId: string;
+  /** The export slug (derived from the process id). */
+  slug: string;
+  /** How many initial elements the process carries. */
+  elementCount: number;
+}
+
+/** The `create` failure result (an editing input failure). */
+export interface CreateFailure {
+  ok: false;
+  error: PrcError;
+}
+
+export type CreateResult = CreateSuccess | CreateFailure;
+
+/** The `change` success result (feat-17 REQ-002/REQ-005). */
+export interface ChangeSuccess {
+  ok: true;
+  /** The process UUID. */
+  uuid: string;
+  /** The operation that was applied. */
+  action: EditingOperation['action'];
+  /** The operation's success detail (ids, positions, removal counts). */
+  detail: EditingSuccess;
+  /**
+   * Whether the mutation reached a file: true for a file-backed
+   * process (write-through, REQ-005), false for a session draft
+   * (in-memory until export).
+   */
+  persisted: boolean;
+  /** Whether the conditional re-read detected an out-of-band change (REQ-004; false for drafts). */
+  outOfBandReRead: boolean;
+}
+
+/** The `change` failure result (an editing input failure or a store failure). */
+export interface ChangeFailure {
+  ok: false;
+  error: PrcError;
+}
+
+export type ChangeResult = ChangeSuccess | ChangeFailure;
 
 /**
  * The minimal structural logger the store needs. A pino `Logger`
@@ -126,6 +210,22 @@ interface CacheEntry {
   slug: string;
 }
 
+/**
+ * The in-memory draft entry for one created-but-not-yet-exported
+ * process (feat-17): the tree plus its identity data, no file and no
+ * checksum (there is nothing to hash until the export writes it).
+ */
+interface DraftEntry {
+  /** The moddle tree (the `bpmn:Definitions` root). */
+  tree: BpmnRootElement;
+  /** The process name as given to `create`. */
+  name: string;
+  /** The derived `bpmn:Process` id. */
+  processId: string;
+  /** The export slug (derived from the process id). */
+  slug: string;
+}
+
 /** A reuse target found by the `import` operation. */
 interface ReuseTarget {
   uuid: string;
@@ -141,6 +241,8 @@ export class PrcStore {
   private readonly cache: Map<string, CacheEntry> = new Map();
 
   private readonly sessionSourcePaths: Map<string, string> = new Map();
+
+  private readonly drafts: Map<string, DraftEntry> = new Map();
 
   /**
    * @param prcDir - The absolute path of the `prc` directory the
@@ -207,11 +309,170 @@ export class PrcStore {
   }
 
   /**
-   * The `export` operation (REQ-006). After the conditional re-read,
-   * the cached tree is serialized (`format: true`) and written
-   * atomically: by default to the process's own `prc` path, or to
-   * the explicit path when given (the only way another file -- e.g.
-   * another process's own path -- is ever overwritten, QA pair
+   * The `create` operation (feat-17 REQ-001): builds a fresh
+   * `bpmn:Definitions`/`bpmn:Process` tree via the editing module
+   * (initial elements included) and registers it as a session draft
+   * under a fresh v4 UUID -- no file is written, there is nothing to
+   * checksum until the first export (QA 1.0070). A blank name or a
+   * malformed initial element is a structured editing error with
+   * nothing registered.
+   *
+   * @param name - The process name (non-blank).
+   * @param initialElements - The initial elements (default: none).
+   */
+  async createProcess(name: string, initialElements?: AddElementInput[]): Promise<CreateResult> {
+    precondition(typeof name === 'string', 'the process name must be a string');
+    const created = buildProcess(name, initialElements);
+    if (!created.ok) {
+      return { ok: false, error: created.error };
+    }
+    const uuid = generateUuid();
+    this.drafts.set(uuid, {
+      tree: created.tree,
+      name,
+      processId: created.processId,
+      slug: created.slug,
+    });
+    this.logger.info(
+      {
+        event: 'prc-create',
+        uuid,
+        name,
+        processId: created.processId,
+        slug: created.slug,
+        elementCount: created.elementCount,
+      },
+      'created a session-draft BPMN process',
+    );
+    return {
+      ok: true,
+      uuid,
+      name,
+      processId: created.processId,
+      slug: created.slug,
+      elementCount: created.elementCount,
+    };
+  }
+
+  /**
+   * The `change` operation (feat-17 REQ-002/REQ-005): applies one of
+   * the four editing operations to a process, resolving the UUID
+   * DRAFT-FIRST, then the on-disk registration (the existing
+   * conditional re-read for file-backed processes). For a file-backed
+   * process the mutation is write-through: the mutated tree is
+   * serialized and atomically written to the process's own file, the
+   * cached checksum is updated to the written bytes, and the
+   * postcondition (REQ-009) verifies the file re-parses to the same
+   * element set -- the file stays the single source of truth
+   * (REQ-005). For a session draft the mutation stays in the in-memory
+   * draft tree (no file, no checksum). An editing failure leaves the
+   * process untouched; an unregistered UUID is a structured error in
+   * every directory state.
+   *
+   * @param uuid - The process UUID (a draft or a registered process).
+   * @param operation - The discriminated editing operation.
+   */
+  async changeProcess(uuid: string, operation: EditingOperation): Promise<ChangeResult> {
+    precondition(uuid.length > 0, 'the process uuid must be a non-empty string');
+    const draft = this.drafts.get(uuid);
+    if (draft !== undefined) {
+      const applied = this.applyOperation(draft.tree, operation);
+      if (!applied.ok) {
+        return { ok: false, error: applied.error };
+      }
+      this.logger.info(
+        { event: 'prc-change', uuid, action: operation.action, persisted: false },
+        'changed a session-draft BPMN process (in memory only)',
+      );
+      return {
+        ok: true,
+        uuid,
+        action: operation.action,
+        detail: applied,
+        persisted: false,
+        outOfBandReRead: false,
+      };
+    }
+
+    const entry = this.cache.get(uuid);
+    if (entry === undefined) {
+      // The uuid is user input: single-line it before interpolation
+      // (review finding E1, REQ-007's single-line `isError` contract).
+      return {
+        ok: false,
+        error: { code: 'process-not-registered', message: `process ${oneLine(uuid)} is not registered` },
+      };
+    }
+
+    let reRead: boolean;
+    let current: CacheEntry | undefined;
+    try {
+      reRead = (await this.ensureCurrentTree(uuid, entry.path)).reRead;
+      current = this.cache.get(uuid);
+      precondition(current !== undefined, `process ${oneLine(uuid)} must stay registered during change`);
+    } catch (error) {
+      if (error instanceof BpmnParseError) {
+        return { ok: false, error: { code: 'not-bpmn', message: error.message } };
+      }
+      return { ok: false, error: this.toIoError(error, 'read-failed', entry.path) };
+    }
+
+    const applied = this.applyOperation(current.tree, operation);
+    if (!applied.ok) {
+      return { ok: false, error: applied.error };
+    }
+
+    let xml: string;
+    try {
+      xml = await serializeBpmn(current.tree);
+      await atomicWriteFile(current.path, xml);
+      current.sha256 = sha256Hex(xml);
+    } catch (error) {
+      if (error instanceof BpmnParseError) {
+        return { ok: false, error: { code: 'not-bpmn', message: error.message } };
+      }
+      return { ok: false, error: this.toIoError(error, 'write-failed', current.path) };
+    }
+
+    const reParsed = (await parseBpmn(await readFile(current.path))).rootElement;
+    postcondition(
+      elementsAreEqual(collectElementInventory(reParsed), collectElementInventory(current.tree)),
+      `the write-through file at ${current.path} must re-parse to the same element set as the mutated tree`,
+    );
+
+    this.logger.info(
+      {
+        event: 'prc-change',
+        uuid,
+        action: operation.action,
+        persisted: true,
+        path: current.path,
+        outOfBandReRead: reRead,
+      },
+      'changed a registered BPMN process (write-through)',
+    );
+    return {
+      ok: true,
+      uuid,
+      action: operation.action,
+      detail: applied,
+      persisted: true,
+      outOfBandReRead: reRead,
+    };
+  }
+
+  /**
+   * The `export` operation (REQ-006, feat-17 draft promotion).
+   * Resolves the UUID draft-first: a session draft is PROMOTED --
+   * its own `prc-<uuid>-<slug>.bpmn` file is written (an explicit
+   * target path is rejected: the own path is the promotion, and an
+   * extra copy would leave two files behind one process) and the
+   * draft moves from the draft map into the cache with the file's
+   * checksum. A registered process exports after the conditional
+   * re-read: the cached tree is serialized (`format: true`) and
+   * written atomically, by default to the process's own `prc` path,
+   * or to the explicit path when given (the only way another file --
+   * e.g. another process's own path -- is ever overwritten, QA pair
    * 9.0010). The checksum cache is updated to the written file's
    * SHA-256 when the own path was written (it always tracks the own
    * file, the one the conditional re-read watches). The postcondition
@@ -219,12 +480,16 @@ export class PrcStore {
    * set as the serialized tree. An unregistered UUID is a structured
    * error in every directory state (ACC-009).
    *
-   * @param uuid - The registered process UUID.
+   * @param uuid - The process UUID (a draft or a registered process).
    * @param targetPath - The explicit write target (optional; defaults
-   *   to the process's own path).
+   *   to the process's own path; rejected for drafts).
    */
   async exportProcess(uuid: string, targetPath?: string): Promise<ExportResult> {
     precondition(uuid.length > 0, 'the process uuid must be a non-empty string');
+    const draft = this.drafts.get(uuid);
+    if (draft !== undefined) {
+      return this.exportDraft(uuid, draft, targetPath);
+    }
     const entry = this.cache.get(uuid);
     if (entry === undefined) {
       return {
@@ -269,7 +534,77 @@ export class PrcStore {
       { event: 'prc-export', uuid, path: writtenPath, ownPath: current.path, outOfBandReRead: reRead },
       'exported a BPMN process',
     );
-    return { ok: true, uuid, path: writtenPath, outOfBandReRead: reRead };
+    return { ok: true, uuid, path: writtenPath, outOfBandReRead: reRead, promoted: false };
+  }
+
+  /**
+   * The draft-promotion leg of `export` (feat-17): writes the draft's
+   * tree to its own `prc-<uuid>-<slug>.bpmn` path (created when
+   * needed, atomic), verifies the postcondition (the written file
+   * re-parses to the draft's element set), and moves the draft from
+   * the draft map into the cache with the written file's checksum --
+   * from then on the UUID resolves as a file-backed process. An
+   * explicit target path is a structured error (the own path is the
+   * promotion; an extra copy is not a sane state for one process).
+   *
+   * @param uuid - The draft's UUID.
+   * @param draft - The draft entry.
+   * @param targetPath - The explicit target (must be absent/empty).
+   */
+  private async exportDraft(uuid: string, draft: DraftEntry, targetPath?: string): Promise<ExportResult> {
+    if (targetPath !== undefined && targetPath.length > 0) {
+      return {
+        ok: false,
+        error: {
+          code: 'draft-export-explicit-path',
+          message: `a session draft must be exported without an explicit target path (the own prc path at ${this.prcDir} promotes the draft)`,
+        },
+      };
+    }
+
+    const ownPath = resolve(this.prcDir, buildPrcFilename(uuid, draft.slug));
+    let xml: string;
+    try {
+      xml = await serializeBpmn(draft.tree);
+    } catch (error) {
+      if (error instanceof BpmnParseError) {
+        return { ok: false, error: { code: 'not-bpmn', message: error.message } };
+      }
+      throw error;
+    }
+    try {
+      await atomicWriteFile(ownPath, xml);
+    } catch (error) {
+      return { ok: false, error: this.toIoError(error, 'write-failed', ownPath) };
+    }
+
+    const reParsed = (await parseBpmn(await readFile(ownPath))).rootElement;
+    postcondition(
+      elementsAreEqual(collectElementInventory(reParsed), collectElementInventory(draft.tree)),
+      `the promoted file at ${ownPath} must re-parse to the same element set as the draft tree`,
+    );
+
+    this.cache.set(uuid, { tree: draft.tree, sha256: sha256Hex(xml), path: ownPath, slug: draft.slug });
+    this.drafts.delete(uuid);
+    this.logger.info(
+      { event: 'prc-export', uuid, path: ownPath, ownPath, outOfBandReRead: false, promoted: true },
+      'exported a session draft and promoted it to the inventory',
+    );
+    return { ok: true, uuid, path: ownPath, outOfBandReRead: false, promoted: true };
+  }
+
+  /** Dispatches an editing operation onto a tree (the change op's core leg). */
+  private applyOperation(tree: BpmnRootElement, operation: EditingOperation): EditingResult {
+    switch (operation.action) {
+      case 'add-element':
+        return addElement(tree, operation);
+      case 'update-element':
+        return updateElement(tree, operation);
+      case 'connect':
+        return connect(tree, operation);
+      case 'delete-element':
+        return deleteElement(tree, operation);
+    }
   }
 
   /**

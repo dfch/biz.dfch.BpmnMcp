@@ -78,6 +78,22 @@ export async function serializeBpmn(rootElement: BpmnRootElement): Promise<strin
 }
 
 /**
+ * Creates a new BPMN metamodel element from the singleton
+ * (feat-17's tree construction): a thin wrapper over the factory so
+ * this module keeps owning every `bpmn-moddle` touch point. Element
+ * references (a shape's `bpmnElement`, a flow's `sourceRef`) may be
+ * given as already-created element objects; the writer resolves them
+ * by `id` at serialization time.
+ *
+ * @param type - The metamodel type name (e.g. `bpmn:Task`,
+ *   `bpmndi:BPMNShape`, `dc:Bounds`).
+ * @param attrs - The initial attribute values.
+ */
+export function createBpmnElement(type: string, attrs?: Record<string, unknown>): ModdleElement {
+  return moddle.create(type, attrs);
+}
+
+/**
  * The `id` of the document's `<bpmn:process>` element (REQ-002's
  * slug source), or `undefined` when the document has no process
  * with a usable `id` (no `bpmn:Process` root element at all, or one
@@ -212,7 +228,7 @@ export function oneLine(text: string): string {
 }
 
 /** Type guard: is this value a moddle element (anything carrying a string `$type`)? */
-function isModdleElement(value: unknown): value is ModdleElement {
+export function isModdleElement(value: unknown): value is ModdleElement {
   return value !== null && typeof value === 'object' && typeof (value as ModdleElement).$type === 'string';
 }
 

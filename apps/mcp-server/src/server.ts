@@ -7,7 +7,8 @@ import { z } from 'zod';
 import type { LoggingConfig } from './config.js';
 import { readPackageMetadata } from './package-metadata.js';
 import { resolveDocsPrcDir } from './paths.js';
-import type { PrcError, PrcStore } from './prc/store.js';
+import { ELEMENT_TYPES, type PrcElementType } from './prc/editing.js';
+import type { ChangeSuccess, PrcError, PrcStore } from './prc/store.js';
 
 /** The `bpmnmcp://config` resource's reported shape (REQ-007). */
 export interface EffectiveConfig {
@@ -60,19 +61,135 @@ export function buildEffectiveConfig(loggingConfig: LoggingConfig): EffectiveCon
 const RE_READ_NOTE =
   'the registered file changed out of band and was re-read; the served content reflects the modification';
 
+/** A non-negative integer coordinate (feat-17 REQ-003: explicit x/y are honored as-is). */
+const NON_NEGATIVE_INT = z.number().int().nonnegative();
+
+/**
+ * The shape of every process UUID this server assigns (v4, lowercase
+ * hex -- the `UUID_V4_SHAPE` convention both MCP-level test files
+ * pin): a uuid outside the shape, in particular a control-character
+ * uuid, is rejected at the MCP layer with the SDK's single-line
+ * `-32602` input-validation error instead of reaching the store
+ * (feat-17 REQ-007/ACC-005, review finding E1; the store-side
+ * `oneLine` wrap is the defense-in-depth second layer). The
+ * pre-existing `import`/`export` tools keep their plain `z.string()`
+ * (feat-2 territory, untouched).
+ */
+const UUID_V4 = z
+  .string()
+  .regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    'the process uuid must be a v4 UUID (the format this server assigns)',
+  );
+
+/**
+ * The Stage 1 element types in the tool-facing kebab-case vocabulary
+ * (feat-17 REQ-002): derived from the core's `ELEMENT_TYPES` so the
+ * tool and the core can never drift apart.
+ */
+const STAGE1_ELEMENT_TYPES = Object.keys(ELEMENT_TYPES) as PrcElementType[];
+
+/**
+ * The `create` tool input (feat-17 REQ-001): the process name
+ * (non-empty at the MCP layer; a whitespace-only name is the core's
+ * structured `invalid-property` error) plus the optional initial
+ * elements (the Stage 1 type, an optional name, an optional caller
+ * id, optional non-negative integer coordinates).
+ */
+const CREATE_INPUT = {
+  name: z.string().min(1),
+  elements: z
+    .array(
+      z.object({
+        type: z.enum(STAGE1_ELEMENT_TYPES),
+        name: z.string().optional(),
+        id: z.string().optional(),
+        x: NON_NEGATIVE_INT.optional(),
+        y: NON_NEGATIVE_INT.optional(),
+      }),
+    )
+    .optional(),
+};
+
+/**
+ * The `change` tool's advertised input (feat-17 REQ-002, QA 1.0010's
+ * top-level action parameter): `uuid` (shape-constrained to the v4
+ * UUIDs this server assigns, review finding E1) plus every action's
+ * fields at the top level. The flat shape keeps each field visible in
+ * `tools/list`; which of them the chosen `action` requires is
+ * enforced where the core's operation is assembled (the
+ * `EDITING_OPERATION` parse in the handler), so the advertised schema
+ * never misreports a field as required for every action.
+ */
+const CHANGE_INPUT = {
+  uuid: UUID_V4,
+  action: z.enum(['add-element', 'update-element', 'connect', 'delete-element']),
+  type: z.enum(STAGE1_ELEMENT_TYPES).optional(),
+  name: z.string().optional(),
+  id: z.string().optional(),
+  x: NON_NEGATIVE_INT.optional(),
+  y: NON_NEGATIVE_INT.optional(),
+  isInterrupting: z.boolean().optional(),
+  sourceId: z.string().optional(),
+  targetId: z.string().optional(),
+  conditionExpression: z.string().optional(),
+};
+
+/**
+ * The discriminated union on `action` the `change` handler assembles
+ * the core's `EditingOperation` from (feat-17 REQ-002): one member
+ * per action, mirroring the core's operation union field for field.
+ * Parsing the flat call arguments against it (the object members
+ * strip the unknown `uuid` key) validates the action's required
+ * fields and yields exactly the operation the store expects.
+ */
+const EDITING_OPERATION = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('add-element'),
+    type: z.enum(STAGE1_ELEMENT_TYPES),
+    name: z.string().optional(),
+    id: z.string().optional(),
+    x: NON_NEGATIVE_INT.optional(),
+    y: NON_NEGATIVE_INT.optional(),
+  }),
+  z.object({
+    action: z.literal('update-element'),
+    id: z.string(),
+    name: z.string().optional(),
+    isInterrupting: z.boolean().optional(),
+    x: NON_NEGATIVE_INT.optional(),
+    y: NON_NEGATIVE_INT.optional(),
+  }),
+  z.object({
+    action: z.literal('connect'),
+    sourceId: z.string(),
+    targetId: z.string(),
+    name: z.string().optional(),
+    conditionExpression: z.string().optional(),
+  }),
+  z.object({
+    action: z.literal('delete-element'),
+    id: z.string(),
+  }),
+]);
+
 /**
  * Creates the `McpServer` instance and registers its resources
  * (feat-1 REQ-006, REQ-007) and tools (feat-2 REQ-005, REQ-006,
- * REQ-007): the `version` and `config` resources, plus `import`
- * (one file path in; the registered uuid and path out) and `export`
- * (a registered uuid plus an optional explicit path in; the written
- * path out). Both tools are thin adapters over the constructed
- * `PrcStore` (QA pair 7.0010): zod validates the input shape, the
- * store owns every filesystem touch, and the store's structured
- * results are mapped 1:1 to tool results -- failures become
- * `isError: true` results carrying the store's single-line message
- * (nothing is thrown across the MCP boundary), successes become JSON
- * text content, mirroring how the resources serialize theirs.
+ * REQ-007; feat-17 REQ-001, REQ-002): the `version` and `config`
+ * resources, plus `import` (one file path in; the registered uuid
+ * and path out), `export` (a registered uuid plus an optional
+ * explicit path in; the written path out), `create` (a name plus the
+ * optional initial elements in; the draft uuid and the derived
+ * identity out) and `change` (a uuid plus the discriminated action
+ * in; the operation detail out). All four tools are thin adapters
+ * over the constructed `PrcStore` (QA pair 7.0010): zod validates
+ * the input shape, the store owns every filesystem touch, and the
+ * store's structured results are mapped 1:1 to tool results --
+ * failures become `isError: true` results carrying the store's
+ * single-line message (nothing is thrown across the MCP boundary),
+ * successes become JSON text content, mirroring how the resources
+ * serialize theirs.
  * Transport-agnostic by design, so both the real stdio entry point
  * (`index.ts`) and the in-memory MCP-level test (`test/`) can build
  * the identical server and only differ in which transport they
@@ -190,6 +307,78 @@ export function createServer(loggingConfig: LoggingConfig, store: PrcStore): Mcp
     },
   );
 
+  server.registerTool(
+    'create',
+    {
+      title: 'Create a BPMN process',
+      description:
+        'Creates a new BPMN 2.0 process as a session draft: a fresh bpmn:Definitions/bpmn:Process ' +
+        'tree under a new v4 UUID, held in memory only -- no file is written until export promotes ' +
+        'the draft to the prc directory. The name must be non-empty (a whitespace-only name is a ' +
+        'structured error). The optional elements list the initial elements: each carries a type ' +
+        'from the Stage 1 set (start-event, end-event, intermediate-catch-event, task, sub-process, ' +
+        'exclusive-gateway, parallel-gateway), an optional name, an optional caller-supplied id ' +
+        '(a generated <type-prefix>_<n> id, e.g. task_1, is used when omitted), and optional ' +
+        'non-negative integer x/y coordinates (omitted coordinates are placed on the grid ' +
+        'automatically). Returns JSON with uuid, name, processId, slug, and elementCount. This ' +
+        'tool does not validate the diagram -- call the validate tool after changes you care ' +
+        'about.',
+      inputSchema: CREATE_INPUT,
+    },
+    async (args) => {
+      const result = await store.createProcess(args.name, args.elements);
+      if (!result.ok) {
+        return toolError(result.error);
+      }
+      return toolJson({
+        uuid: result.uuid,
+        name: result.name,
+        processId: result.processId,
+        slug: result.slug,
+        elementCount: result.elementCount,
+      });
+    },
+  );
+
+  server.registerTool(
+    'change',
+    {
+      title: 'Change a BPMN process',
+      description:
+        'Applies exactly one change to a process addressed by its uuid (one action per call). ' +
+        'Fields not belonging to the chosen action are ignored. add-element creates a new ' +
+        'element: type from the Stage 1 set (start-event, end-event, intermediate-catch-event, ' +
+        'task, sub-process, exclusive-gateway, parallel-gateway) plus an optional name, an ' +
+        'optional caller-supplied id, and optional non-negative integer x/y coordinates (omitted ' +
+        'coordinates are grid-placed). An intermediate-catch event is created without an event ' +
+        'definition (the BPMN spec requires one, tied to a message) and will be flagged by the ' +
+        'validate tool until the message-flow increment lands. update-element changes an ' +
+        'existing one: id plus an optional name (any flow element, node or sequence flow), an ' +
+        'optional isInterrupting (start events only), and optional x/y repositioning the element. ' +
+        'connect creates a sequence flow between two flow nodes: sourceId and targetId plus an ' +
+        'optional name and an optional conditionExpression text. delete-element removes a flow ' +
+        'node -- with every sequence flow referencing it -- or a sequence flow: id. For ' +
+        'registered processes the change is write-through: the mutation is serialized to the ' +
+        'process prc file, the single source of truth; for session drafts (created but not yet ' +
+        'exported) it stays in memory until export. Returns JSON with uuid, action, the operation ' +
+        'detail (ids, positions, or removal counts), persisted, and outOfBandReRead (plus a note ' +
+        'when an out-of-band change was re-read). This tool does not validate the diagram -- call ' +
+        'the validate tool after changes you care about.',
+      inputSchema: CHANGE_INPUT,
+    },
+    async (args) => {
+      const operation = EDITING_OPERATION.safeParse(args);
+      if (!operation.success) {
+        return toolErrorText(operationShapeMessage(operation.error));
+      }
+      const result = await store.changeProcess(args.uuid, operation.data);
+      if (!result.ok) {
+        return toolError(result.error);
+      }
+      return toolJson(changeSuccessPayload(result));
+    },
+  );
+
   return server;
 }
 
@@ -201,9 +390,56 @@ export function createServer(loggingConfig: LoggingConfig, store: PrcStore): Mcp
  * @param error - The structured store error.
  */
 function toolError(error: PrcError): CallToolResult {
+  return toolErrorText(error.message);
+}
+
+/**
+ * The `isError` tool result for a single-line message (the MCP-layer
+ * shape rejections that the store never sees): the message as text
+ * content, nothing thrown.
+ *
+ * @param message - The single-line, human-readable message.
+ */
+function toolErrorText(message: string): CallToolResult {
   return {
-    content: [{ type: 'text', text: error.message }],
+    content: [{ type: 'text', text: message }],
     isError: true,
+  };
+}
+
+/**
+ * The single-line message for a change input that does not fit the
+ * chosen action (a per-action required field is missing): every zod
+ * issue folded into one line, worded like the SDK's own MCP-layer
+ * validation error so both layers read the same way.
+ *
+ * @param error - The failed `EDITING_OPERATION` parse.
+ */
+function operationShapeMessage(error: z.ZodError): string {
+  const issues = error.issues.map((issue) =>
+    issue.path.length > 0 ? `${issue.message} at ${issue.path.join('.')}` : issue.message,
+  );
+  return `Input validation error: Invalid arguments for tool change: ${issues.join('; ')}`;
+}
+
+/**
+ * The flat success JSON for a change (feat-17 REQ-002): the
+ * operation detail (ids, positions, removal counts) spread one level
+ * deep, without the detail's redundant `ok` flag, plus the store's
+ * `persisted` and re-read state (the note convention, REQ-004).
+ *
+ * @param result - The store's change success.
+ */
+function changeSuccessPayload(result: ChangeSuccess): Record<string, unknown> {
+  const detail: Record<string, unknown> = { ...result.detail };
+  delete detail.ok;
+  return {
+    uuid: result.uuid,
+    action: result.action,
+    ...detail,
+    persisted: result.persisted,
+    outOfBandReRead: result.outOfBandReRead,
+    ...(result.outOfBandReRead ? { note: RE_READ_NOTE } : {}),
   };
 }
 
