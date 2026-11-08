@@ -4,7 +4,7 @@ created: '2026-11-07T08:56:51.646+01:00'
 id: feat-18-parse-tool
 status: planning
 type: feat
-updated: '2026-11-07T08:56:51.646+01:00'
+updated: '2026-11-08T17:51:26.877+01:00'
 version: 1.0.0
 ---
 
@@ -14,29 +14,33 @@ version: 1.0.0
 
 ### Overview
 
-Implements the `parse` tool (REQ a36fb3d9) per QA 1.0040: it exposes a
-registered process as a structured, addressable model instead of raw
-XML. For a given uuid (after the store's conditional re-read, QA
-1.0080), it returns every element with its BPMN id, type, and name,
-plus every sequence and message flow with its id, source, target, and
-condition expression where present. The agent addresses elements by
-their BPMN id in subsequent `change` calls. Builds on the existing
-metamodel-driven inventory walk in `src/prc/moddle.ts`
-(`collectElementInventory`, currently id + type only), which is
-extended rather than replaced. Anchored in GitHub issue #18.
+Implements the `parse` tool (REQ a36fb3d9-a285-49c9-b5b4-deb2f55b8998)
+per QA 818fac76-96fb-4e3c-acb8-e5520fab5913 (pair 1.0040): it
+exposes a registered process as a structured, addressable model
+instead of raw XML. For a given uuid (after the store's conditional
+re-read, pair 1.0080), it returns every flow-model element with its
+BPMN id, type, and name, plus every sequence and message flow with
+its id, source, target, and condition expression where present. The
+agent addresses elements by their BPMN id in subsequent `change`
+calls. Builds on the existing metamodel-driven inventory walk in
+`apps/mcp-server/src/prc/moddle.ts`: a new sibling function
+`collectAddressableInventory` reuses the walk's machinery, while
+`collectElementInventory` (currently id + type only, BPMNDI
+included) is deliberately unchanged (Design Notes). Anchored in
+GitHub issue #18.
 
 ### Requirements
 
-- REQ-001: A `parse` tool: input a process uuid; output structured JSON - `{ elements: [{ id, type, name? }], flows: [{ id, kind, source, target, conditionExpression? }] }` where `name` and `conditionExpression` are omitted when absent and `kind` is `sequence` or `message` (derived from the moddle type).
-- REQ-002: The inventory walk (`moddle.ts`) is extended to capture element names and flow references (`sourceRef`/`targetRef`, condition expression text) while staying metamodel-driven, cycle-safe, and deterministic; BPMNDI elements are excluded from `elements` (they are not addressable model elements - recorded decision).
-- REQ-003: The tool operates on the current on-disk state: the store's conditional re-read runs first, and an out-of-band re-read is noted in the result the same way `import`/`export` already do.
-- REQ-004: Structured errors (`isError`, single-line message, no crash): unknown uuid, unparseable file (the store's existing `not-bpmn` path).
-- REQ-005: Tests: unit legs for the extended inventory (names, flows with and without conditions, a message flow, DI exclusion, deterministic ordering) and a spawn e2e leg (import a committed fixture, parse it, assert the exact element/flow set).
-- REQ-006: The full gate chain stays green on Node 26; the handshake lists `parse`; the archunit layering and the license-header gate hold (the extension lives in the core, the adapter only registers the tool).
+- REQ-001: A `parse` tool: input a process uuid; output structured JSON - `{ elements: [{ id, type, name? }], flows: [{ id, kind, source, target, conditionExpression? }] }` where `name` and `conditionExpression` are omitted when absent or empty (`undefined` or `""`), `source`/`target` are omitted when the corresponding reference does not resolve to an element, and `kind` is `sequence` or `message` (derived from the moddle type). The result uses the same JSON text-block shape `import`/`export` already return, carrying `outOfBandReRead` and, on a re-read, the conditional single-line note (REQ-003).
+- REQ-002: A sibling function `collectAddressableInventory` in `apps/mcp-server/src/prc/moddle.ts` captures element names and flow references (resolved `sourceRef`/`targetRef`, condition expression text) while staying metamodel-driven, cycle-safe, and deterministic; BPMNDI elements are excluded from its `elements` - the agent addresses elements by BPMN id in `change` calls and DI shapes/edges are not change-addressable (this feature's own recorded decision; QA pair 1.0040's "every element" reads as every flow-model element). `collectElementInventory` is deliberately unchanged: `uniqueDiId` (`apps/mcp-server/src/prc/layout.ts`) computes its taken-id set from it and relies on the full id set including BPMNDI ids, and feat-2's recorded decision that the production walk stays id/type only remains in force.
+- REQ-003: The tool operates on the current state: the store's conditional re-read runs first, and an out-of-band re-read is noted in the result the same way `import`/`export` already do. For a uuid that resolves to an in-memory draft with no on-disk file, the tool serves the draft's tree with `outOfBandReRead: false` and no note (the draft is the current state; parse is read-only).
+- REQ-004: Structured errors (`isError`, single-line message, no crash): unknown uuid, unparseable file (the store's existing `not-bpmn` path). Parse warnings (an unresolvable reference leaves the property unset) are swallowed, matching the current `parseBpmn` behavior; surfacing them is a follow-up candidate - recorded, not decided.
+- REQ-005: Tests: unit legs for the new inventory (names present/non-empty/empty/absent, flows with and without conditions and with an empty condition, a message flow, an unresolvable flow reference, DI exclusion, deterministic ordering) and a spawn e2e leg (import the committed fixture `apps/mcp-server/test/fixtures/order-process.bpmn`, parse it, assert the exact element/flow set as hardcoded expected literals - not a set computed by the walk under test).
+- REQ-006: The full gate chain stays green on Node 26; the handshake lists `parse`; the archunit layering and the license-header gate hold (the new function lives in the core, the adapter only registers the tool).
 
 ### Acceptance Criteria
 
-- [ ] ACC-001: `parse` on a committed fixture returns the expected, deterministically ordered element and flow sets with names and condition expressions exactly as present in the file.
+- [ ] ACC-001: `parse` on the committed fixture `order-process.bpmn` returns exactly the hardcoded expected element and flow literals, deterministically ordered (elements by (type, id), flows by id), with names and condition expressions exactly as present in the file.
 - [ ] ACC-002: An out-of-band edit of the process file between two `parse` calls is detected: the second result reflects the new state and notes the re-read.
 - [ ] ACC-003: Unknown uuid and unparseable-file legs return `isError` single-line; the server stays usable.
 - [ ] ACC-004: The handshake lists `parse` in addition to the existing tools; all pre-existing tests pass; `npm ci`, `lint`, `format:check`, `build`, and `test --coverage` are green on Node 26.
@@ -45,8 +49,9 @@ extended rather than replaced. Anchored in GitHub issue #18.
 
 #### Included
 
-- The `collectElementInventory` extension (names, flow references, DI exclusion) and its unit tests.
+- The new `collectAddressableInventory` sibling function in `apps/mcp-server/src/prc/moddle.ts` (names, flow references, DI exclusion) and its unit tests; `collectElementInventory` itself stays unchanged.
 - The `parse` tool adapter (zod schema, description) and the spawn e2e leg.
+- The deletion of the test-local `collectRoundTripInventory` duplication, with the ACC-007 round-trip leg re-pointed at the production functions (Task 110.120).
 - The C4 description update and this feat's Progress discipline.
 
 #### Explicitly Out Of Scope
@@ -59,7 +64,7 @@ extended rather than replaced. Anchored in GitHub issue #18.
 
 #### Depends On
 
-- feat-2-prc-import-export (the `PrcStore`, `moddle.ts` inventory walk, the re-read machinery)
+- FEAT feat-2-prc-import-export (the `PrcStore`, the `moddle.ts` inventory walk, the re-read machinery)
 - DEC fdc84432-1b48-4eb9-82e0-ec13cb8cf8ba: Use a Node/TypeScript MCP Server for Agent-Driven BPMN Modeling
 - GitHub issue #18
 
@@ -70,27 +75,42 @@ extended rather than replaced. Anchored in GitHub issue #18.
   element type is an implementation-time question (expect none in
   Stage 1 diagrams) - recorded, not decided.
 - `conditionExpression` is the text of the element's
-  `conditionExpression` child where present.
-- Ordering: elements and flows are each sorted by id, matching the
-  existing inventory's deterministic sort (QA 1.0040 asks for a
-  stable, addressable result).
+  `conditionExpression` child where present and non-empty (text
+  `""` counts as absent, as for `name`).
+- Ordering: elements sorted by (type, id), matching the existing
+  `compareElementRefs` comparator in
+  `apps/mcp-server/src/prc/moddle.ts`; flows sorted by id, matching
+  the existing ACC-007 e2e leg's sort. QA pair 1.0040 asks for a
+  stable, addressable result, not a specific order.
+- Sibling function, not in-place extension: `uniqueDiId`
+  (`apps/mcp-server/src/prc/layout.ts`) takes its used-id set from
+  `collectElementInventory` and needs the full id set including
+  BPMNDI ids; feat-2's Progress 2026-11-01 Decisions Made (4) and
+  post-implementation review finding I3 recorded the walk's current
+  id/type-only, DI-inclusive shape; and feat-17 (create/change,
+  status review) calls it through the store, so an in-place change
+  would race that review. The function is named
+  `collectAddressableInventory` and lives in `moddle.ts` beside the
+  existing walk (a new file is out: `src/prc/inventory.ts` already
+  means the process-directory inventory).
 
 ### Related Decisions
 
 - DEC fdc84432-1b48-4eb9-82e0-ec13cb8cf8ba: Use a Node/TypeScript MCP Server for Agent-Driven BPMN Modeling
-- QA pair 1.0040 (docs/qa/qa-818fac76): what parse returns
+- QA 818fac76-96fb-4e3c-acb8-e5520fab5913 (pair 1.0040): what parse returns
 
 ### Task List
 
 #### Phase 100: Core inventory extension
 
-- [ ] Task 100.100: Extend `collectElementInventory` (or add a sibling function) to capture element names and flow references with condition text, excluding BPMNDI elements; keep the walk metamodel-driven and cycle-safe.
-- [ ] Task 100.110: Unit tests: names present/absent, sequence and message flows, condition with/without, DI exclusion, deterministic ordering.
+- [ ] Task 100.100: Add `collectAddressableInventory` in `apps/mcp-server/src/prc/moddle.ts` beside the existing walk: element names and flow references (resolved `sourceRef`/`targetRef`, condition expression text); BPMNDI elements excluded; elements sorted by (type, id), flows by id; metamodel-driven and cycle-safe like the existing walk. `collectElementInventory` and `compareElementRefs` stay unchanged.
+- [ ] Task 100.110: Unit tests: names present/non-empty/empty/absent (empty and absent both omitted), sequence and message flows, condition with/without/empty, an unresolvable flow reference (omitted), DI exclusion, deterministic ordering.
 
 #### Phase 110: Tool adapter
 
-- [ ] Task 110.100: Register the `parse` tool (zod schema, description, structured errors per REQ-004) on top of the store's re-read.
-- [ ] Task 110.110: Update the handshake test; add the spawn e2e leg (ACC-001) and the out-of-band re-read leg (ACC-002).
+- [ ] Task 110.100: Register the `parse` tool (zod schema, description, structured errors per REQ-004) on top of the store's re-read; the draft case per REQ-003.
+- [ ] Task 110.110: Update the handshake test; add the spawn e2e leg (ACC-001: import the `order-process.bpmn` fixture, parse, assert the hardcoded expected literals); add the out-of-band re-read leg (ACC-002: import the fixture so the process is registered, parse, edit the on-disk file out-of-band, parse again, assert the second result reflects the new state with `outOfBandReRead: true` and the single-line note); add the draft leg (REQ-003: parse a uuid with an in-memory draft and no on-disk file serves the draft's tree with `outOfBandReRead: false` and no note).
+- [ ] Task 110.120: Delete the test-local `collectRoundTripInventory` helper (`apps/mcp-server/test/mcp-server.test.ts`); re-point the ACC-007 round-trip leg's two-sided comparison at the production functions - flow-model invariance (elements with names, flows with resolved references) via `collectAddressableInventory`, full id-set invariance including BPMNDI via `collectElementInventory` - keeping the existing flow-shape pin; both production sorts match the helper's sort, so the assertions stay neutral; update the helper's doc-comment rationale (the feat-2 "not extended for the test's sake" note) to the sibling-function decision.
 
 #### Phase 120: Gates and docs
 
@@ -102,16 +122,39 @@ extended rather than replaced. Anchored in GitHub issue #18.
 
 ### Current Status
 
-**As of 2026-11-07**: Planned; no implementation started.
+**As of 2026-11-08**: Plan refined (feat-refiner pass: E1-E3, D1,
+G1-G6, I1-I5 resolved; four design decisions recorded); no
+implementation started.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
 
+#### 2026-11-08T16:51:26.877Z - Plan refined (feat-refiner pass)
+
+The feat-refiner findings (E1-E3, D1, G1-G6, I1-I5) were applied to
+the plan.
+
+Decisions Made:
+
+1. Sibling function `collectAddressableInventory` in `moddle.ts`;
+   `collectElementInventory` deliberately unchanged - `uniqueDiId`
+   relies on its full (DI-inclusive) id set, feat-2's Decisions Made
+   (4) and review finding I3 stay in force, and this avoids racing
+   the feat-17 review (status review).
+2. `parse` on a draft uuid (in-memory, no on-disk file) serves the
+   draft's tree with `outOfBandReRead: false` and no note.
+3. Parse warnings are swallowed (matches current `parseBpmn`
+   behavior); surfacing them is a follow-up candidate - recorded, not
+   decided.
+4. The test-local `collectRoundTripInventory` dedup is in scope
+   (Task 110.120): the ACC-007 leg re-points at both production
+   functions, keeping the DI invariance coverage.
+
 #### 2026-11-07T08:58:00.000Z - Created
 
 Initial feature plan for the `parse` tool, per GitHub issue #18 and
-QA pair 1.0040.
+QA 818fac76-96fb-4e3c-acb8-e5520fab5913 (pair 1.0040).
 
 ### Related PRs / Commits
 
