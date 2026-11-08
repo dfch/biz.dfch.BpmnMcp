@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   BpmnParseError,
+  collectAddressableInventory,
   collectElementInventory,
   getProcessId,
   parseBpmn,
@@ -107,5 +108,170 @@ describe('parse/serialize/re-parse round-trip (REQ-001/REQ-006)', () => {
     expect(inventoryA).toEqual(
       [...inventoryA].sort((x, y) => (x.type === y.type ? (x.id < y.id ? -1 : 1) : x.type < y.type ? -1 : 1)),
     );
+  });
+});
+
+describe('collectAddressableInventory (REQ-001/REQ-002)', () => {
+  /** Wraps a definitions body in a minimal BPMN 2.0 document. */
+  const definitions = (body: string): string =>
+    `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  ${body}
+</bpmn:definitions>`;
+
+  it('records element names (an empty name is omitted like an absent one)', async () => {
+    const { rootElement } = await parseBpmn(
+      definitions(
+        `
+    <bpmn:process id="process">
+      <bpmn:startEvent id="named" name="Has a name" />
+      <bpmn:task id="empty-name" name="" />
+      <bpmn:endEvent id="no-name" />
+    </bpmn:process>`,
+      ),
+    );
+    const { elements } = collectAddressableInventory(rootElement);
+    // toStrictEqual pins the exact shape: the `name` property is not
+    // set for the empty-name and no-name elements alike.
+    expect(elements).toStrictEqual([
+      { id: 'no-name', type: 'bpmn:EndEvent' },
+      { id: 'named', name: 'Has a name', type: 'bpmn:StartEvent' },
+      { id: 'empty-name', type: 'bpmn:Task' },
+    ]);
+  });
+
+  it('records sequence and message flows with their kind', async () => {
+    const { rootElement } = await parseBpmn(
+      definitions(
+        `
+    <bpmn:collaboration id="collab">
+      <bpmn:participant id="p1" processRef="process1" />
+      <bpmn:participant id="p2" processRef="process2" />
+      <bpmn:messageFlow id="mf-1" sourceRef="p1" targetRef="p2" />
+    </bpmn:collaboration>
+    <bpmn:process id="process1">
+      <bpmn:startEvent id="start" />
+      <bpmn:endEvent id="end" />
+      <bpmn:sequenceFlow id="sf-1" sourceRef="start" targetRef="end" />
+    </bpmn:process>
+    <bpmn:process id="process2" />`,
+      ),
+    );
+    const { elements, flows } = collectAddressableInventory(rootElement);
+    expect(flows).toStrictEqual([
+      { id: 'mf-1', kind: 'message', source: 'p1', target: 'p2' },
+      { id: 'sf-1', kind: 'sequence', source: 'start', target: 'end' },
+    ]);
+    // Both flow kinds are flow-model elements as well; the collaboration
+    // scope (the collaboration, its participants) and the process itself
+    // are containers, not elements.
+    const byId = new Map(elements.map((element) => [element.id, element]));
+    expect(byId.get('mf-1')).toStrictEqual({ id: 'mf-1', type: 'bpmn:MessageFlow' });
+    expect(byId.get('sf-1')).toStrictEqual({ id: 'sf-1', type: 'bpmn:SequenceFlow' });
+    expect(byId.has('collab')).toBe(false);
+    expect(byId.has('p1')).toBe(false);
+    expect(byId.has('process1')).toBe(false);
+  });
+
+  it('records the condition expression text (missing and empty both omit the property)', async () => {
+    const { rootElement } = await parseBpmn(
+      definitions(
+        `
+    <bpmn:process id="process">
+      <bpmn:startEvent id="start" />
+      <bpmn:task id="task" />
+      <bpmn:endEvent id="end" />
+      <bpmn:sequenceFlow id="cond-text" sourceRef="start" targetRef="task">
+        <bpmn:conditionExpression>amount &gt; 1000</bpmn:conditionExpression>
+      </bpmn:sequenceFlow>
+      <bpmn:sequenceFlow id="cond-absent" sourceRef="task" targetRef="end" />
+      <bpmn:sequenceFlow id="cond-empty" sourceRef="task" targetRef="end">
+        <bpmn:conditionExpression />
+      </bpmn:sequenceFlow>
+    </bpmn:process>`,
+      ),
+    );
+    const { flows } = collectAddressableInventory(rootElement);
+    expect(flows).toStrictEqual([
+      { id: 'cond-absent', kind: 'sequence', source: 'task', target: 'end' },
+      { id: 'cond-empty', kind: 'sequence', source: 'task', target: 'end' },
+      { id: 'cond-text', kind: 'sequence', source: 'start', target: 'task', conditionExpression: 'amount > 1000' },
+    ]);
+  });
+
+  it('omits a flow reference that does not resolve', async () => {
+    const { rootElement } = await parseBpmn(
+      definitions(
+        `
+    <bpmn:process id="process">
+      <bpmn:task id="task" />
+      <bpmn:sequenceFlow id="broken" sourceRef="ghost" targetRef="task" />
+    </bpmn:process>`,
+      ),
+    );
+    const { flows } = collectAddressableInventory(rootElement);
+    expect(flows).toStrictEqual([{ id: 'broken', kind: 'sequence', target: 'task' }]);
+  });
+
+  it('excludes the BPMNDI interchange information and the container elements', async () => {
+    const { rootElement } = await parseBpmn(readFixture('order-process.bpmn'));
+    const { elements, flows } = collectAddressableInventory(rootElement);
+    expect(elements).toStrictEqual([
+      { id: 'end-event', name: 'Order done', type: 'bpmn:EndEvent' },
+      { id: 'flow-1', type: 'bpmn:SequenceFlow' },
+      { id: 'flow-2', type: 'bpmn:SequenceFlow' },
+      { id: 'start-event', name: 'Order received', type: 'bpmn:StartEvent' },
+      { id: 'review-task', name: 'Review order', type: 'bpmn:Task' },
+    ]);
+    expect(flows).toStrictEqual([
+      { id: 'flow-1', kind: 'sequence', source: 'start-event', target: 'review-task' },
+      { id: 'flow-2', kind: 'sequence', source: 'review-task', target: 'end-event' },
+    ]);
+    // No DI/DC id and no container id appears anywhere in the inventory.
+    const ids = new Set<string>([...elements.map((element) => element.id), ...flows.map((flow) => flow.id)]);
+    const excluded = [
+      'Definitions_1',
+      'order-process',
+      'BPMNDiagram_1',
+      'BPMNPlane_1',
+      'shape-start',
+      'shape-task',
+      'shape-end',
+      'edge-1',
+      'edge-2',
+    ];
+    for (const id of excluded) {
+      expect(ids.has(id)).toBe(false);
+    }
+  });
+
+  it('is deterministically ordered (elements by (type, id), flows by id)', async () => {
+    const body = `
+    <bpmn:process id="process">
+      <bpmn:task id="task-z" />
+      <bpmn:task id="task-a" />
+      <bpmn:startEvent id="start-b" />
+      <bpmn:startEvent id="start-a" />
+      <bpmn:endEvent id="end-m" />
+      <bpmn:exclusiveGateway id="gateway-x" />
+      <bpmn:sequenceFlow id="f-c" sourceRef="start-b" targetRef="gateway-x" />
+      <bpmn:sequenceFlow id="f-a" sourceRef="start-a" targetRef="task-a" />
+      <bpmn:sequenceFlow id="f-b" sourceRef="task-z" targetRef="end-m" />
+    </bpmn:process>`;
+    const first = collectAddressableInventory((await parseBpmn(definitions(body))).rootElement);
+    const second = collectAddressableInventory((await parseBpmn(definitions(body))).rootElement);
+    expect(second).toStrictEqual(first);
+    expect(first.elements.map((element) => [element.type, element.id])).toStrictEqual([
+      ['bpmn:EndEvent', 'end-m'],
+      ['bpmn:ExclusiveGateway', 'gateway-x'],
+      ['bpmn:SequenceFlow', 'f-a'],
+      ['bpmn:SequenceFlow', 'f-b'],
+      ['bpmn:SequenceFlow', 'f-c'],
+      ['bpmn:StartEvent', 'start-a'],
+      ['bpmn:StartEvent', 'start-b'],
+      ['bpmn:Task', 'task-a'],
+      ['bpmn:Task', 'task-z'],
+    ]);
+    expect(first.flows.map((flow) => flow.id)).toStrictEqual(['f-a', 'f-b', 'f-c']);
   });
 });

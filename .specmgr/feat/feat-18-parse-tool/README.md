@@ -4,7 +4,7 @@ created: '2026-11-07T08:56:51.646+01:00'
 id: feat-18-parse-tool
 status: planning
 type: feat
-updated: '2026-11-08T17:51:26.877+01:00'
+updated: '2026-11-09T00:10:10.913+01:00'
 version: 1.0.0
 ---
 
@@ -103,8 +103,8 @@ GitHub issue #18.
 
 #### Phase 100: Core inventory extension
 
-- [ ] Task 100.100: Add `collectAddressableInventory` in `apps/mcp-server/src/prc/moddle.ts` beside the existing walk: element names and flow references (resolved `sourceRef`/`targetRef`, condition expression text); BPMNDI elements excluded; elements sorted by (type, id), flows by id; metamodel-driven and cycle-safe like the existing walk. `collectElementInventory` and `compareElementRefs` stay unchanged.
-- [ ] Task 100.110: Unit tests: names present/non-empty/empty/absent (empty and absent both omitted), sequence and message flows, condition with/without/empty, an unresolvable flow reference (omitted), DI exclusion, deterministic ordering.
+- [x] Task 100.100: Add `collectAddressableInventory` in `apps/mcp-server/src/prc/moddle.ts` beside the existing walk: element names and flow references (resolved `sourceRef`/`targetRef`, condition expression text); BPMNDI elements excluded; elements sorted by (type, id), flows by id; metamodel-driven and cycle-safe like the existing walk. `collectElementInventory` and `compareElementRefs` stay unchanged.
+- [x] Task 100.110: Unit tests: names present/non-empty/empty/absent (empty and absent both omitted), sequence and message flows, condition with/without/empty, an unresolvable flow reference (omitted), DI exclusion, deterministic ordering.
 
 #### Phase 110: Tool adapter
 
@@ -122,13 +122,65 @@ GitHub issue #18.
 
 ### Current Status
 
-**As of 2026-11-08**: Plan refined (feat-refiner pass: E1-E3, D1,
-G1-G6, I1-I5 resolved; four design decisions recorded); no
-implementation started.
+**As of 2026-11-09**: Phase 100 implemented (`collectAddressableInventory`
+plus its six unit legs in the core; gate chain green: lint,
+format:check, build, 253 tests with coverage); no `parse` tool yet
+(Phase 110).
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-08T23:10:10.913Z - Phase 100 implemented (core inventory extension)
+
+Tasks 100.100/100.110 done. `apps/mcp-server/src/prc/moddle.ts`
+gains the exported `collectAddressableInventory(rootElement)`
+(returning `{ elements: AddressableElement[], flows:
+AddressableFlow[] }`, the new exported types `FlowKind`,
+`AddressableElement`, `AddressableFlow`, `AddressableInventory`)
+beside the existing walk: elements carry `id`, `type`, and `name`
+(omitted when absent or empty); flows carry `id`, `kind`
+(`sequence`/`message`), `source`/`target` resolved from
+`sourceRef`/`targetRef` (omitted when unresolvable), and
+`conditionExpression` (omitted when absent or empty). The
+visited-set loop was factored into a shared private `walkElements`
+helper (allowed by the task); `collectElementInventory`'s output and
+its JSDoc (including the "covered alike" statement) and
+`compareElementRefs` are unchanged - the pre-existing unit and
+ACC-007 legs still pass byte-identical. Six unit legs added to
+`apps/mcp-server/test/prc/moddle.test.ts` (names, flow kinds,
+condition with/without/empty, unresolvable reference, DI exclusion
+on the `order-process.bpmn` fixture, deterministic ordering). Gate
+chain green on Node 26: lint, format:check, build, 253 tests
+(coverage 95.11% statements).
+
+Decisions Made:
+
+1. The Design Notes' "implementation-time question" is resolved:
+   `flows` carries only `bpmn:SequenceFlow` (`kind: 'sequence'`) and
+   `bpmn:MessageFlow` (`kind: 'message'`); any other flow-like type
+   (e.g. `bpmn:Association`) appears in `elements` but in no `flows`
+   entry.
+2. The `elements` predicate: the flow-model elements are the
+   `bpmn:FlowElement` instances of every process (at any subprocess
+   depth, via `$instanceOf`) plus the collaboration-scoped
+   `bpmn:MessageFlow` elements matched by type - the metamodel
+   declares them as plain `bpmn:BaseElement`, not flow elements
+   (matching the BPMN 2.0 XSD). The container elements
+   (`bpmn:Definitions`, `bpmn:Process`, collaboration/participants)
+   and all BPMNDI/DC elements are thus excluded.
+3. The condition expression text is the `body` attribute of the
+   `conditionExpression` child (verified: bpmn-moddle reads the
+   element's text content into `body`); a `bpmn:MessageFlow` carries
+   no `conditionExpression` property in the metamodel, so it never
+   has a condition.
+4. `referenceId` (private) mirrors the test-local ACC-007 helper: a
+   resolved element yields its id, a raw string reference its own
+   value (defensive - a full parse leaves unresolvable references
+   unset), everything else nothing.
+5. The exact-shape test assertions use `toStrictEqual` (first use in
+   the repo) to pin that omitted optionals are truly not set; no
+   non-null assertions were introduced.
 
 #### 2026-11-08T16:51:26.877Z - Plan refined (feat-refiner pass)
 
