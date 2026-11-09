@@ -4,7 +4,7 @@ created: '2026-11-07T08:56:51.646+01:00'
 id: feat-18-parse-tool
 status: planning
 type: feat
-updated: '2026-11-09T00:10:10.913+01:00'
+updated: '2026-11-09T01:22:49.577+01:00'
 version: 1.0.0
 ---
 
@@ -114,25 +114,50 @@ GitHub issue #18.
 
 #### Phase 120: Gates and docs
 
-- [ ] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier).
-- [ ] Task 120.110: Update the C4 container description (the tool list) and this feat's Progress section.
+- [x] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier).
+- [x] Task 120.110: Update the C4 container description (the tool list) and this feat's Progress section.
 - [ ] Task 120.120: Open the PR referencing issue #18.
 
 ## Progress
 
 ### Current Status
 
-**As of 2026-11-09**: Phase 110 implemented (the store-level
-`parseProcess` operation and the `parse` tool adapter, the spawn
-e2e legs for ACC-001/ACC-002/ACC-003 and the draft case, the
-handshake updates in both MCP-level suites, the ACC-007 re-point to
-the production inventories, and the store unit legs; gate chain
-green: lint, format:check, build, 266 tests with coverage); Phase
-120 (gates/docs/PR) is next.
+**As of 2026-11-09**: All three phases implemented (Phase 100:
+`collectAddressableInventory` beside the core walk; Phase 110:
+the store-level `parseProcess`, the `parse` tool adapter, the
+spawn e2e legs for ACC-001/ACC-002/ACC-003 and the draft case,
+the handshake updates in both MCP-level suites, the ACC-007
+re-point, and the store unit legs; Phase 120: the full gate
+chain on Node 26 and the C4 container description update). Full
+gate chain green: npm ci, lint, format:check, build, 266 tests
+with coverage (95.12% statements); the PR (Task 120.120) and
+the status flip are the orchestrator's final step.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-09T00:22:49.577Z - Phase 120 implemented (gates and docs)
+
+Tasks 120.100/120.110 done. The full gate chain ran on Node
+26.13.0 in order, every command exit 0, no drift found to fix:
+`npm ci` (`package-lock.json` unmodified - this feature added no
+dependencies), `npm run lint`, `npm run format:check` ("All
+matched files use Prettier code style!"), `npm run build`
+(typecheck + emit), and `npm test -- --coverage` (16 test files,
+266 tests passed, coverage 95.12% statements / 89.73% branches
+/ 99.31% functions / 95.15% lines; the license-header drift
+gate and the archunit architecture legs - CONSTITUTION §4, QA
+7.0030 - pass within the suite, verified by name). The MCP
+Server container description in `docs/c4/c4-container.puml` and
+`docs/c4/workspace.dsl` (kept byte-identical, the feat-17
+convention) now lists five exposed tools (create, change,
+import, export, parse) with only validate and preview remaining
+planned, and the prc core enumeration gains the compact clause
+"the addressable inventory for parse (flow-model elements with
+names, sequence/message flows with resolved references, BPMNDI
+excluded)". Task 120.120 (open the PR referencing issue #18)
+and the status flip are left to the orchestrator's final step.
 
 #### 2026-11-09T00:05:24.485Z - Phase 110 implemented (the parse tool adapter)
 
