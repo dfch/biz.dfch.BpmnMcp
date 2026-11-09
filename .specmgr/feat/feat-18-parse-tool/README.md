@@ -326,3 +326,4 @@ QA 818fac76-96fb-4e3c-acb8-e5520fab5913 (pair 1.0040).
 ### Related PRs / Commits
 
 - GitHub issue #18
+- PR #22 (feat-18-parse-tool → dev): the parse MCP tool
