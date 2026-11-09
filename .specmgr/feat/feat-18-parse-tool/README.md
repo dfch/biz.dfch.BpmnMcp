@@ -108,9 +108,9 @@ GitHub issue #18.
 
 #### Phase 110: Tool adapter
 
-- [ ] Task 110.100: Register the `parse` tool (zod schema, description, structured errors per REQ-004) on top of the store's re-read; the draft case per REQ-003.
-- [ ] Task 110.110: Update the handshake test; add the spawn e2e leg (ACC-001: import the `order-process.bpmn` fixture, parse, assert the hardcoded expected literals); add the out-of-band re-read leg (ACC-002: import the fixture so the process is registered, parse, edit the on-disk file out-of-band, parse again, assert the second result reflects the new state with `outOfBandReRead: true` and the single-line note); add the draft leg (REQ-003: parse a uuid with an in-memory draft and no on-disk file serves the draft's tree with `outOfBandReRead: false` and no note).
-- [ ] Task 110.120: Delete the test-local `collectRoundTripInventory` helper (`apps/mcp-server/test/mcp-server.test.ts`); re-point the ACC-007 round-trip leg's two-sided comparison at the production functions - flow-model invariance (elements with names, flows with resolved references) via `collectAddressableInventory`, full id-set invariance including BPMNDI via `collectElementInventory` - keeping the existing flow-shape pin; both production sorts match the helper's sort, so the assertions stay neutral; update the helper's doc-comment rationale (the feat-2 "not extended for the test's sake" note) to the sibling-function decision.
+- [x] Task 110.100: Register the `parse` tool (zod schema, description, structured errors per REQ-004) on top of the store's re-read; the draft case per REQ-003.
+- [x] Task 110.110: Update the handshake test; add the spawn e2e leg (ACC-001: import the `order-process.bpmn` fixture, parse, assert the hardcoded expected literals); add the out-of-band re-read leg (ACC-002: import the fixture so the process is registered, parse, edit the on-disk file out-of-band, parse again, assert the second result reflects the new state with `outOfBandReRead: true` and the single-line note); add the draft leg (REQ-003: parse a uuid with an in-memory draft and no on-disk file serves the draft's tree with `outOfBandReRead: false` and no note).
+- [x] Task 110.120: Delete the test-local `collectRoundTripInventory` helper (`apps/mcp-server/test/mcp-server.test.ts`); re-point the ACC-007 round-trip leg's two-sided comparison at the production functions - flow-model invariance (elements with names, flows with resolved references) via `collectAddressableInventory`, full id-set invariance including BPMNDI via `collectElementInventory` - keeping the existing flow-shape pin; both production sorts match the helper's sort, so the assertions stay neutral; update the helper's doc-comment rationale (the feat-2 "not extended for the test's sake" note) to the sibling-function decision.
 
 #### Phase 120: Gates and docs
 
@@ -122,14 +122,83 @@ GitHub issue #18.
 
 ### Current Status
 
-**As of 2026-11-09**: Phase 100 implemented (`collectAddressableInventory`
-plus its six unit legs in the core; gate chain green: lint,
-format:check, build, 253 tests with coverage); no `parse` tool yet
-(Phase 110).
+**As of 2026-11-09**: Phase 110 implemented (the store-level
+`parseProcess` operation and the `parse` tool adapter, the spawn
+e2e legs for ACC-001/ACC-002/ACC-003 and the draft case, the
+handshake updates in both MCP-level suites, the ACC-007 re-point to
+the production inventories, and the store unit legs; gate chain
+green: lint, format:check, build, 266 tests with coverage); Phase
+120 (gates/docs/PR) is next.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-09T00:05:24.485Z - Phase 110 implemented (the parse tool adapter)
+
+Tasks 110.100/110.110/110.120 done. `apps/mcp-server/src/prc/store.ts`
+gains the public `parseProcess(uuid)` (exported `ParseSuccess`/
+`ParseFailure`/`ParseResult`): DRAFT-FIRST resolution (a session
+draft is served from its in-memory tree -- no file access, no
+checksum, `outOfBandReRead: false`; a registered process is served
+after the conditional re-read, REQ-003), the `AddressableInventory`
+computed by `collectAddressableInventory` (imported from
+`./moddle.js`), unknown uuid -> `process-not-registered` (the
+`exportProcess` message shape), a re-read that no longer parses ->
+`not-bpmn`, a filesystem failure -> `read-failed`, and a
+`prc-parse` structured log event on both success legs.
+`apps/mcp-server/src/server.ts` registers the `parse` tool (input
+`{ uuid }` with the v4-shape zod constraint; the multi-line
+description; the success payload `uuid`/`elements`/`flows`/
+`outOfBandReRead` plus `note` only on re-read; failures via
+`toolError`). Tests: the handshake now pins five tools in both
+`mcp-server.test.ts` and `mcp-server.spawn.test.ts`; the spawn
+suite gains the ACC-001 leg (the hardcoded element/flow literals of
+`order-process.bpmn`), the ACC-002 out-of-band re-read leg, the
+REQ-003 draft leg (created, not exported; no prc file), and the
+ACC-003 legs (unknown uuid, corrupted own file -- the server and
+the registration stay usable); `store.test.ts` gains five
+`parseProcess` legs (registered success, draft-first without file
+access, unknown uuid in every directory state, out-of-band
+modification, `not-bpmn`); the in-process suite gains a minimal
+adapter block (success JSON shape, unknown uuid, zod shape
+rejection) without duplicating the mandated spawn legs. The
+test-local `collectRoundTripInventory` helper (and its local
+types/guards) is deleted; the ACC-007 leg re-points at
+`collectAddressableInventory` (flow-model invariance) and
+`collectElementInventory` (full id-set invariance, BPMNDI
+included, pinned strictly richer), keeps the flow-shape pin
+(extended with `kind: 'sequence'`), and carries the relocated
+sibling-function rationale as its comment. Gate chain green on
+Node 26: lint, format:check, build, 266 tests (coverage 95.12%
+statements).
+
+Decisions Made:
+
+1. The store-level `parseProcess` is the home of the conditional
+   re-read, the draft-first resolution, and the inventory
+   computation; the adapter stays a thin mapper (architecturally
+   forced by the core/adapter layering: `src/prc` never sees the
+   MCP SDK, and the tool result's `elements`/`flows` come from the
+   store's `inventory` field, spread one level deep).
+2. The `parse` uuid input uses the v4-shape zod constraint (the
+   `UUID_V4` schema), for consistency with `change`, the newest
+   uuid-input tool; `import`/`export` keep their legacy plain
+   `z.string()` (feat-2 territory, untouched).
+3. The success payload carries `uuid` like import/export, and the
+   `note` only on a re-read (the established convention).
+4. The unknown-uuid message follows `exportProcess`'s shape
+   (`process ${uuid} is not registered`, no `oneLine` wrap): at
+   the adapter layer the v4-shape constraint makes the uuid safe,
+   and the store-level shape matches the sibling the task pinned.
+5. The ACC-007 leg additionally asserts the full
+   (`collectElementInventory`) id set is strictly larger than the
+   addressable element set, pinning the container/BPMNDI coverage
+   the test-local helper never had.
+6. The spawn ACC-003(b) leg proves registration survival by
+   restoring the original bytes after the corrupted parse and
+   asserting a successful cache-hit parse (`outOfBandReRead:
+false` -- the failed re-read left the cache untouched).
 
 #### 2026-11-08T23:10:10.913Z - Phase 100 implemented (core inventory extension)
 

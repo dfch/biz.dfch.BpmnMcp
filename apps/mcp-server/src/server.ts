@@ -176,13 +176,16 @@ const EDITING_OPERATION = z.discriminatedUnion('action', [
 /**
  * Creates the `McpServer` instance and registers its resources
  * (feat-1 REQ-006, REQ-007) and tools (feat-2 REQ-005, REQ-006,
- * REQ-007; feat-17 REQ-001, REQ-002): the `version` and `config`
+ * REQ-007; feat-17 REQ-001, REQ-002; feat-18 REQ-001..REQ-004): the
+ * `version` and `config`
  * resources, plus `import` (one file path in; the registered uuid
  * and path out), `export` (a registered uuid plus an optional
  * explicit path in; the written path out), `create` (a name plus the
  * optional initial elements in; the draft uuid and the derived
- * identity out) and `change` (a uuid plus the discriminated action
- * in; the operation detail out). All four tools are thin adapters
+ * identity out), `change` (a uuid plus the discriminated action in;
+ * the operation detail out) and `parse` (a uuid in; the addressable
+ * element and flow lists of the current state out). All five tools
+ * are thin adapters
  * over the constructed `PrcStore` (QA pair 7.0010): zod validates
  * the input shape, the store owns every filesystem touch, and the
  * store's structured results are mapped 1:1 to tool results --
@@ -376,6 +379,42 @@ export function createServer(loggingConfig: LoggingConfig, store: PrcStore): Mcp
         return toolError(result.error);
       }
       return toolJson(changeSuccessPayload(result));
+    },
+  );
+
+  server.registerTool(
+    'parse',
+    {
+      title: 'Parse a BPMN process',
+      description:
+        'Returns a process as a structured, addressable model instead of raw XML. The process ' +
+        'is served in its current state: a registered file is re-read first when its checksum ' +
+        'changed out of band; a session draft (created but not yet exported) is the current ' +
+        'state and is served from memory without a note. Returns JSON with uuid, elements ' +
+        '(every flow-model element with its BPMN id, moddle type, and name, sorted by type ' +
+        'then id; the name is omitted when absent or empty), and flows (every sequence and ' +
+        "message flow with its id, kind ('sequence' or 'message'), its source and target " +
+        "resolved to the referenced elements' BPMN ids (omitted when a reference does not " +
+        'resolve), and conditionExpression when present and non-empty, sorted by id), plus ' +
+        'outOfBandReRead (and a note when the registered file was re-read after an out-of-band ' +
+        'change). This tool is read-only: it writes nothing and does not validate the diagram. ' +
+        'Address the returned elements by their BPMN id in change calls.',
+      inputSchema: {
+        uuid: UUID_V4,
+      },
+    },
+    async (args) => {
+      const result = await store.parseProcess(args.uuid);
+      if (!result.ok) {
+        return toolError(result.error);
+      }
+      return toolJson({
+        uuid: result.uuid,
+        elements: result.inventory.elements,
+        flows: result.inventory.flows,
+        outOfBandReRead: result.outOfBandReRead,
+        ...(result.outOfBandReRead ? { note: RE_READ_NOTE } : {}),
+      });
     },
   );
 

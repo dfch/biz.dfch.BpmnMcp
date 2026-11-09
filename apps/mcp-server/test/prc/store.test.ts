@@ -10,8 +10,14 @@ import { Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import pino from 'pino';
 import { buildPrcFilename } from '../../src/prc/filename.js';
-import { collectElementInventory, getProcessId, parseBpmn, serializeBpmn } from '../../src/prc/moddle.js';
-import type { ImportResult, PrcLogger } from '../../src/prc/store.js';
+import {
+  collectAddressableInventory,
+  collectElementInventory,
+  getProcessId,
+  parseBpmn,
+  serializeBpmn,
+} from '../../src/prc/moddle.js';
+import type { CreateResult, ImportResult, ParseResult, PrcLogger } from '../../src/prc/store.js';
 import { PrcStore } from '../../src/prc/store.js';
 
 // Resolve the fixture directory independent of the test runner's
@@ -47,6 +53,24 @@ function expectImportOk(result: ImportResult): Extract<ImportResult, { ok: true 
   expect(result.ok).toBe(true);
   if (!result.ok) {
     throw new Error('unreachable: the import result must be a success');
+  }
+  return result;
+}
+
+/** Narrows a `CreateResult` to its success side for the test body. */
+function expectCreated(result: CreateResult): Extract<CreateResult, { ok: true }> {
+  expect(result.ok).toBe(true);
+  if (!result.ok) {
+    throw new Error('unreachable: the create result must be a success');
+  }
+  return result;
+}
+
+/** Narrows a `ParseResult` to its success side for the test body. */
+function expectParseOk(result: ParseResult): Extract<ParseResult, { ok: true }> {
+  expect(result.ok).toBe(true);
+  if (!result.ok) {
+    throw new Error('unreachable: the parse result must be a success');
   }
   return result;
 }
@@ -378,6 +402,104 @@ describe('PrcStore (REQ-004/REQ-005/REQ-006/REQ-009)', () => {
       if (!restored.ok) {
         throw new Error('unreachable: the export after restore must succeed');
       }
+      expect(restored.outOfBandReRead).toBe(false);
+    });
+  });
+
+  describe('parseProcess (feat-18 REQ-001..REQ-004)', () => {
+    it("serves the current tree's addressable inventory of a registered process, no re-read when unchanged", async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+
+      const result = expectParseOk(await store.parseProcess(first.uuid));
+
+      expect(result.uuid).toBe(first.uuid);
+      expect(result.outOfBandReRead).toBe(false);
+      expect(result.inventory).toEqual(
+        collectAddressableInventory((await parseBpmn(readFileSync(source))).rootElement),
+      );
+      const info = records.find((record) => record.event === 'prc-parse');
+      expect(info?.level).toBe('info');
+    });
+
+    it('serves a session draft from its in-memory tree without a file access (REQ-003)', async () => {
+      const created = expectCreated(
+        await store.createProcess('Parse Draft', [{ type: 'start-event' }, { type: 'task', name: 'Work' }]),
+      );
+
+      const result = expectParseOk(await store.parseProcess(created.uuid));
+
+      expect(result.uuid).toBe(created.uuid);
+      expect(result.outOfBandReRead).toBe(false);
+      expect(result.inventory.elements).toEqual([
+        { id: 'startEvent_1', type: 'bpmn:StartEvent' },
+        { id: 'task_1', name: 'Work', type: 'bpmn:Task' },
+      ]);
+      expect(result.inventory.flows).toEqual([]);
+      // No file access: the prc directory does not even exist.
+      expect(existsSync(prcDir)).toBe(false);
+      const info = records.find((record) => record.event === 'prc-parse');
+      expect(info?.level).toBe('info');
+    });
+
+    it('returns a structured not-registered error for an unknown uuid in every directory state (REQ-004)', async () => {
+      const unknown = 'ffffffff-ffff-4fff-afff-ffffffffffff';
+      const expectedError = {
+        ok: false,
+        error: { code: 'process-not-registered', message: `process ${unknown} is not registered` },
+      } as const;
+
+      // (a) the directory is absent.
+      let result = await store.parseProcess(unknown);
+      expect(result).toEqual(expectedError);
+      expect(existsSync(prcDir)).toBe(false);
+
+      // (b) the directory is empty.
+      mkdirSync(prcDir, { recursive: true });
+      result = await store.parseProcess(unknown);
+      expect(result).toEqual(expectedError);
+
+      // (c) the directory is populated with a conforming file that was
+      // never imported in this session -- registration is in-memory only.
+      const diskOnlyUuid = '11111111-1111-4111-8111-111111111111';
+      writeFileSync(join(prcDir, buildPrcFilename(diskOnlyUuid, 'disk-only')), readFileSync(ORDER_FIXTURE));
+      result = await store.parseProcess(unknown);
+      expect(result).toEqual(expectedError);
+    });
+
+    it('detects an out-of-band change on the next parse and serves the modification (REQ-003)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+      writeFileSync(first.path, readFileSync(first.path, 'utf8').replace('name="Review order"', 'name="Second look"'));
+
+      const result = expectParseOk(await store.parseProcess(first.uuid));
+
+      expect(result.outOfBandReRead).toBe(true);
+      expect(result.inventory.elements).toContainEqual({ id: 'review-task', name: 'Second look', type: 'bpmn:Task' });
+      expect(records.some((record) => record.event === 'prc-reread-out-of-band')).toBe(true);
+    });
+
+    it('returns a structured not-bpmn error when the own file no longer parses (REQ-004)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+      const originalBytes = readFileSync(first.path);
+      writeFileSync(first.path, 'this is not BPMN');
+
+      const result = await store.parseProcess(first.uuid);
+
+      // (1) a structured not-bpmn result with a single-line message.
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error('unreachable: a parse over a corrupted own file must fail');
+      }
+      expect(result.error.code).toBe('not-bpmn');
+      expect(result.error.message).toMatch(/^failed to parse BPMN 2\.0 XML: /);
+      expect(result.error.message).not.toMatch(/[\r\n]/);
+
+      // (2) the registration is untouched: restoring the original bytes
+      // is a cache hit (no re-read note) on the next parse.
+      writeFileSync(first.path, originalBytes);
+      const restored = expectParseOk(await store.parseProcess(first.uuid));
       expect(restored.outOfBandReRead).toBe(false);
     });
   });

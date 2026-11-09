@@ -59,6 +59,15 @@ interface ExportSuccessPayload {
   note?: string;
 }
 
+/** The `parse` tool result's success JSON (feat-18 REQ-001). */
+interface ParseSuccessPayload {
+  uuid: string;
+  elements: { id: string; type: string; name?: string }[];
+  flows: { id: string; kind: string; source?: string; target?: string; conditionExpression?: string }[];
+  outOfBandReRead: boolean;
+  note?: string;
+}
+
 /** The tool outcome a test asserts on: the `isError` flag and the single text content. */
 interface ToolOutcome {
   isError: boolean;
@@ -113,6 +122,13 @@ async function changeSuccess(client: Client, args: Record<string, unknown>): Pro
   const outcome = await callTool(client, 'change', args);
   expect(outcome.isError).toBe(false);
   return JSON.parse(outcome.text) as Record<string, unknown>;
+}
+
+/** Calls `parse` over stdio and narrows the success JSON (the test expects success). */
+async function parseSuccess(client: Client, uuid: string): Promise<ParseSuccessPayload> {
+  const outcome = await callTool(client, 'parse', { uuid });
+  expect(outcome.isError).toBe(false);
+  return JSON.parse(outcome.text) as ParseSuccessPayload;
 }
 
 /** The id of an element reference, whether resolved (an element) or raw (a string). */
@@ -313,14 +329,14 @@ describe('spawned server over real stdio (ACC-006, ACC-007, ACC-008)', () => {
     expect(() => JSON.parse(firstLine)).not.toThrow();
   });
 
-  it('lists exactly the four tools over real stdio: change, create, export, import (feat-17 ACC-004)', async () => {
-    // The handshake lists create and change in addition to the existing tools.
+  it('lists exactly the five tools over real stdio: change, create, export, import, parse (feat-18 ACC-004)', async () => {
+    // The handshake lists create, change, and parse in addition to the existing tools.
     const docsDir = join(tempCwd, 'docs');
     ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
     await client.connect(transport);
 
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name).sort()).toEqual(['change', 'create', 'export', 'import']);
+    expect(tools.map((tool) => tool.name).sort()).toEqual(['change', 'create', 'export', 'import', 'parse']);
   });
 
   describe('the import/export tools (feat-2, ACC-006/ACC-008, stdio leg)', () => {
@@ -640,6 +656,129 @@ describe('spawned server over real stdio (ACC-006, ACC-007, ACC-008)', () => {
       // The server stays usable after the rejected input.
       const added = await changeSuccess(client, { uuid: created.uuid, action: 'add-element', type: 'task' });
       expect(added).toMatchObject({ id: 'task_1', persisted: false });
+    });
+  });
+
+  describe('the parse tool (feat-18, ACC-001..ACC-003, REQ-003, stdio leg)', () => {
+    it('ACC-001: imports the fixture, parse returns the hardcoded element/flow literals', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const imported = await importSuccess(client, ORDER_FIXTURE);
+
+      const parsed = await parseSuccess(client, imported.uuid);
+
+      expect(parsed.uuid).toBe(imported.uuid);
+      expect(parsed.outOfBandReRead).toBe(false);
+      expect(parsed.note).toBeUndefined();
+      expect(parsed.elements).toEqual([
+        { id: 'end-event', name: 'Order done', type: 'bpmn:EndEvent' },
+        { id: 'flow-1', type: 'bpmn:SequenceFlow' },
+        { id: 'flow-2', type: 'bpmn:SequenceFlow' },
+        { id: 'start-event', name: 'Order received', type: 'bpmn:StartEvent' },
+        { id: 'review-task', name: 'Review order', type: 'bpmn:Task' },
+      ]);
+      expect(parsed.flows).toEqual([
+        { id: 'flow-1', kind: 'sequence', source: 'start-event', target: 'review-task' },
+        { id: 'flow-2', kind: 'sequence', source: 'review-task', target: 'end-event' },
+      ]);
+    });
+
+    it('ACC-002: an out-of-band edit between two parses is re-read, noted, and served', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const imported = await importSuccess(client, ORDER_FIXTURE);
+      const first = await parseSuccess(client, imported.uuid);
+      expect(first.outOfBandReRead).toBe(false);
+      expect(first.note).toBeUndefined();
+
+      // Edit the registered own file out of band (the test process is
+      // "another instance" for the spawned server).
+      writeFileSync(
+        imported.path,
+        readFileSync(imported.path, 'utf8').replace('name="Order received"', 'name="Out of band"'),
+      );
+
+      const second = await parseSuccess(client, imported.uuid);
+
+      expect(second.outOfBandReRead).toBe(true);
+      expect(second.note).toMatch(/out of band/);
+      expect(second.note).not.toContain('\n');
+      // The second result reflects the new state.
+      expect(second.elements).toContainEqual({ id: 'start-event', name: 'Out of band', type: 'bpmn:StartEvent' });
+      expect(second.elements).not.toContainEqual({
+        id: 'start-event',
+        name: 'Order received',
+        type: 'bpmn:StartEvent',
+      });
+    });
+
+    it('REQ-003: parsing a draft (created, not exported) serves the in-memory tree, no file, no note', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const created = await createSuccess(client, {
+        name: 'Parse Draft',
+        elements: [{ type: 'start-event' }, { type: 'task', name: 'Work' }],
+      });
+
+      const parsed = await parseSuccess(client, created.uuid);
+
+      expect(parsed.uuid).toBe(created.uuid);
+      expect(parsed.outOfBandReRead).toBe(false);
+      expect(parsed.note).toBeUndefined();
+      expect(parsed.elements).toEqual([
+        { id: 'startEvent_1', type: 'bpmn:StartEvent' },
+        { id: 'task_1', name: 'Work', type: 'bpmn:Task' },
+      ]);
+      expect(parsed.flows).toEqual([]);
+      // The draft is in memory only: the prc file does not exist.
+      expect(existsSync(join(docsDir, 'prc'))).toBe(false);
+    });
+
+    it('ACC-003: an unknown uuid is a single-line isError; the server stays usable', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const unknown = 'ffffffff-ffff-4fff-afff-ffffffffffff';
+      const unknownParse = await callTool(client, 'parse', { uuid: unknown });
+      expect(unknownParse.isError).toBe(true);
+      expect(unknownParse.text).toBe(`process ${unknown} is not registered`);
+      expect(unknownParse.text).not.toContain('\n');
+
+      // The server stays usable: a subsequent valid call succeeds.
+      const imported = await importSuccess(client, ORDER_FIXTURE);
+      const parsed = await parseSuccess(client, imported.uuid);
+      expect(parsed.uuid).toBe(imported.uuid);
+      expect(parsed.outOfBandReRead).toBe(false);
+    });
+
+    it('ACC-003: a corrupted own file is a single-line isError; the registration and the server stay usable', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const imported = await importSuccess(client, ORDER_FIXTURE);
+      const fixtureBytes = readFileSync(ORDER_FIXTURE);
+
+      // Corrupt the own prc file out of band.
+      writeFileSync(imported.path, 'this is not BPMN');
+      const corrupted = await callTool(client, 'parse', { uuid: imported.uuid });
+      expect(corrupted.isError).toBe(true);
+      expect(corrupted.text).toMatch(/^failed to parse BPMN 2\.0 XML: /);
+      expect(corrupted.text).not.toContain('\n');
+
+      // The registration survived the failed re-read: restoring the
+      // bytes is a cache hit and the server stays usable.
+      writeFileSync(imported.path, fixtureBytes);
+      const restored = await parseSuccess(client, imported.uuid);
+      expect(restored.outOfBandReRead).toBe(false);
+      expect(restored.note).toBeUndefined();
     });
   });
 });
