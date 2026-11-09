@@ -213,6 +213,58 @@ describe('collectAddressableInventory (REQ-001/REQ-002)', () => {
     expect(flows).toStrictEqual([{ id: 'broken', kind: 'sequence', target: 'task' }]);
   });
 
+  it('omits a dangling flow target (the source still resolves)', async () => {
+    const { rootElement } = await parseBpmn(
+      definitions(
+        `
+    <bpmn:process id="process">
+      <bpmn:startEvent id="start" />
+      <bpmn:sequenceFlow id="broken-target" sourceRef="start" targetRef="ghost" />
+    </bpmn:process>`,
+      ),
+    );
+    const { flows } = collectAddressableInventory(rootElement);
+    expect(flows).toStrictEqual([{ id: 'broken-target', kind: 'sequence', source: 'start' }]);
+  });
+
+  it('reaches flow-model elements at any sub-process depth', async () => {
+    const { rootElement } = await parseBpmn(
+      definitions(
+        `
+    <bpmn:process id="process">
+      <bpmn:startEvent id="outer-start" />
+      <bpmn:subProcess id="sub">
+        <bpmn:startEvent id="inner-start" />
+        <bpmn:task id="inner-task" />
+        <bpmn:endEvent id="inner-end" />
+        <bpmn:sequenceFlow id="inner-flow-1" sourceRef="inner-start" targetRef="inner-task" />
+        <bpmn:sequenceFlow id="inner-flow-2" sourceRef="inner-task" targetRef="inner-end" />
+      </bpmn:subProcess>
+      <bpmn:sequenceFlow id="outer-flow-1" sourceRef="outer-start" targetRef="sub" />
+    </bpmn:process>`,
+      ),
+    );
+    const { elements, flows } = collectAddressableInventory(rootElement);
+    // The inner elements (and the sub-process itself) are flow-model
+    // elements at a deeper container level; the inner flows resolve
+    // inside the sub-process.
+    expect(elements).toStrictEqual([
+      { id: 'inner-end', type: 'bpmn:EndEvent' },
+      { id: 'inner-flow-1', type: 'bpmn:SequenceFlow' },
+      { id: 'inner-flow-2', type: 'bpmn:SequenceFlow' },
+      { id: 'outer-flow-1', type: 'bpmn:SequenceFlow' },
+      { id: 'inner-start', type: 'bpmn:StartEvent' },
+      { id: 'outer-start', type: 'bpmn:StartEvent' },
+      { id: 'sub', type: 'bpmn:SubProcess' },
+      { id: 'inner-task', type: 'bpmn:Task' },
+    ]);
+    expect(flows).toStrictEqual([
+      { id: 'inner-flow-1', kind: 'sequence', source: 'inner-start', target: 'inner-task' },
+      { id: 'inner-flow-2', kind: 'sequence', source: 'inner-task', target: 'inner-end' },
+      { id: 'outer-flow-1', kind: 'sequence', source: 'outer-start', target: 'sub' },
+    ]);
+  });
+
   it('excludes the BPMNDI interchange information and the container elements', async () => {
     const { rootElement } = await parseBpmn(readFixture('order-process.bpmn'));
     const { elements, flows } = collectAddressableInventory(rootElement);
@@ -240,6 +292,42 @@ describe('collectAddressableInventory (REQ-001/REQ-002)', () => {
       'edge-1',
       'edge-2',
     ];
+    for (const id of excluded) {
+      expect(ids.has(id)).toBe(false);
+    }
+  });
+
+  it('excludes artifacts from both lists (an association is not a flow-model element)', async () => {
+    // Pins the corrected understanding (Phase 130, review finding I1/G3,
+    // correction of Phase 100 Decision 1's example): artifacts (e.g.
+    // bpmn:Association, bpmn:Group) are not flow-model elements -- per
+    // the BPMN 2.0 XSD they are in the artifact, not the flowElement,
+    // substitution group -- and are excluded from both lists like the
+    // container elements and the BPMNDI information, because they are
+    // not change-addressable.
+    const { rootElement } = await parseBpmn(
+      definitions(
+        `
+    <bpmn:collaboration id="collab">
+      <bpmn:participant id="p1" processRef="process1" />
+      <bpmn:participant id="p2" processRef="process2" />
+      <bpmn:association id="assoc-1" sourceRef="p1" targetRef="p2" />
+    </bpmn:collaboration>
+    <bpmn:process id="process1">
+      <bpmn:task id="task-1" />
+    </bpmn:process>
+    <bpmn:process id="process2" />`,
+      ),
+    );
+    const { elements, flows } = collectAddressableInventory(rootElement);
+    // The association (in collaboration.artifacts) and the participants
+    // (collaboration scope) appear in neither list; the one flow-model
+    // element in p1's process appears in elements, so the leg proves
+    // artifact exclusion, not whole-document exclusion.
+    expect(elements).toStrictEqual([{ id: 'task-1', type: 'bpmn:Task' }]);
+    expect(flows).toStrictEqual([]);
+    const ids = new Set<string>([...elements.map((element) => element.id), ...flows.map((flow) => flow.id)]);
+    const excluded = ['collab', 'p1', 'p2', 'assoc-1', 'process1', 'process2'];
     for (const id of excluded) {
       expect(ids.has(id)).toBe(false);
     }

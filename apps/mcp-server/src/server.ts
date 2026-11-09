@@ -174,35 +174,22 @@ const EDITING_OPERATION = z.discriminatedUnion('action', [
 ]);
 
 /**
- * Creates the `McpServer` instance and registers its resources
- * (feat-1 REQ-006, REQ-007) and tools (feat-2 REQ-005, REQ-006,
- * REQ-007; feat-17 REQ-001, REQ-002; feat-18 REQ-001..REQ-004): the
- * `version` and `config`
- * resources, plus `import` (one file path in; the registered uuid
- * and path out), `export` (a registered uuid plus an optional
- * explicit path in; the written path out), `create` (a name plus the
- * optional initial elements in; the draft uuid and the derived
- * identity out), `change` (a uuid plus the discriminated action in;
- * the operation detail out) and `parse` (a uuid in; the addressable
- * element and flow lists of the current state out). All five tools
- * are thin adapters
- * over the constructed `PrcStore` (QA pair 7.0010): zod validates
- * the input shape, the store owns every filesystem touch, and the
- * store's structured results are mapped 1:1 to tool results --
- * failures become `isError: true` results carrying the store's
- * single-line message (nothing is thrown across the MCP boundary),
- * successes become JSON text content, mirroring how the resources
- * serialize theirs.
- * Transport-agnostic by design, so both the real stdio entry point
- * (`index.ts`) and the in-memory MCP-level test (`test/`) can build
- * the identical server and only differ in which transport they
- * `connect()` it to.
+ * Creates the `McpServer` instance and registers its resources (feat-1 REQ-006, REQ-007) and tools (feat-2 REQ-005,
+ * REQ-006, REQ-007; feat-17 REQ-001, REQ-002; feat-18 REQ-001..REQ-004): the `version` and `config` resources, plus
+ * `import` (one file path in; the registered uuid and path out), `export` (a registered uuid plus an optional explicit
+ * path in; the written path out), `create` (a name plus the optional initial elements in; the draft uuid and the
+ * derived identity out), `change` (a uuid plus the discriminated action in; the operation detail out) and `parse` (a
+ * uuid in; the addressable element and flow lists of the current state out). All five tools are thin adapters over the
+ * constructed `PrcStore` (QA pair 7.0010): zod validates the input shape, the store owns every filesystem touch, and
+ * the store's structured results are mapped 1:1 to tool results -- failures become `isError: true` results carrying the
+ * store's single-line message (nothing is thrown across the MCP boundary), successes become JSON text content,
+ * mirroring how the resources serialize theirs.
+ * Transport-agnostic by design, so both the real stdio entry point (`index.ts`) and the in-memory MCP-level test
+ * (`test/`) can build the identical server and only differ in which transport they `connect()` it to.
  *
- * @param loggingConfig - The effective logging configuration (the
- *   `config` resource's data).
- * @param store - The constructed `prc` artifact store the tools
- *   adapt (a constructed instance, not a factory -- the plan's
- *   module-layout note).
+ * @param loggingConfig - The effective logging configuration (the `config` resource's data).
+ * @param store - The constructed `prc` artifact store the tools adapt (a constructed instance, not a factory -- the
+ *   plan's module-layout note).
  */
 export function createServer(loggingConfig: LoggingConfig, store: PrcStore): McpServer {
   const packageMetadata = readPackageMetadata();
@@ -395,10 +382,11 @@ export function createServer(loggingConfig: LoggingConfig, store: PrcStore): Mcp
         'then id; the name is omitted when absent or empty), and flows (every sequence and ' +
         "message flow with its id, kind ('sequence' or 'message'), its source and target " +
         "resolved to the referenced elements' BPMN ids (omitted when a reference does not " +
-        'resolve), and conditionExpression when present and non-empty, sorted by id), plus ' +
-        'outOfBandReRead (and a note when the registered file was re-read after an out-of-band ' +
-        'change). This tool is read-only: it writes nothing and does not validate the diagram. ' +
-        'Address the returned elements by their BPMN id in change calls.',
+        "resolve; a message flow's source and target are its referenced participants, which " +
+        'are not part of elements), and conditionExpression when present and non-empty, ' +
+        'sorted by id), plus outOfBandReRead (and a note when the registered file was re-read ' +
+        'after an out-of-band change). This tool is read-only: it writes nothing and does not ' +
+        'validate the diagram. Address the returned elements by their BPMN id in change calls.',
       inputSchema: {
         uuid: UUID_V4,
       },

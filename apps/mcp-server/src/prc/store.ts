@@ -519,9 +519,12 @@ export class PrcStore {
     }
     const entry = this.cache.get(uuid);
     if (entry === undefined) {
+      // The uuid is user input: single-line it before interpolation
+      // (feat-18 review finding I3, defense-in-depth: safe today only
+      // because the adapter enforces the v4-shape constraint).
       return {
         ok: false,
-        error: { code: 'process-not-registered', message: `process ${uuid} is not registered` },
+        error: { code: 'process-not-registered', message: `process ${oneLine(uuid)} is not registered` },
       };
     }
 
@@ -651,9 +654,12 @@ export class PrcStore {
 
     const entry = this.cache.get(uuid);
     if (entry === undefined) {
+      // The uuid is user input: single-line it before interpolation
+      // (feat-18 review finding I3, defense-in-depth: safe today only
+      // because the adapter enforces the v4-shape constraint).
       return {
         ok: false,
-        error: { code: 'process-not-registered', message: `process ${uuid} is not registered` },
+        error: { code: 'process-not-registered', message: `process ${oneLine(uuid)} is not registered` },
       };
     }
 

@@ -4,7 +4,7 @@ created: '2026-11-07T08:56:51.646+01:00'
 id: feat-18-parse-tool
 status: review
 type: feat
-updated: '2026-11-09T01:32:43.215+01:00'
+updated: '2026-11-09T06:56:50.083+01:00'
 version: 1.0.0
 ---
 
@@ -118,25 +118,149 @@ GitHub issue #18.
 - [x] Task 120.110: Update the C4 container description (the tool list) and this feat's Progress section.
 - [x] Task 120.120: Open the PR referencing issue #18.
 
+#### Phase 130: Post-implementation review fixes
+
+- [x] Task 130.100: Add the missing test legs (review finding I1): a dangling flow target leg in `apps/mcp-server/test/prc/moddle.test.ts` (G1: the `sourceRef` resolves, the `targetRef` dangles; the flow carries `source` and omits `target`, asserted with `toStrictEqual` like the neighboring legs), a sub-process depth leg in the same file (G4: a `bpmn:subProcess` with an inner start event, task, end event, and two inner sequence flows; the inner elements appear in `elements` with their types and the inner flows in `flows` with their resolved references, pinning the recorded Phase 100 Decision 2 "at any subprocess depth"), the `parseProcess` deleted-own-file leg in `apps/mcp-server/test/prc/store.test.ts` (G2: import the fixture, `rmSync` the own path, `parseProcess` returns `ok: false` with `error.code === 'path-missing'`, mirroring the `exportProcess` leg; closes the last unexecuted branch of `parseProcess`, the `toIoError` leg at `store.ts` ~line 670), and an artifact-exclusion leg in `moddle.test.ts` (G3, resolved per the orchestrator's option (a) after the finding came out wrong as described: a `bpmn:association` between the two participants of a `bpmn:collaboration` appears in NEITHER `elements` NOR `flows`, the participants and processes appear in neither, and the one flow-model element in a participant's process appears in `elements`; pins the corrected Phase 100 Decision 1 -- the rule stands, but its example was factually wrong: a `bpmn:Association` is an `Artifact` per the BPMN 2.0 XSD (`substitutionGroup="artifact"`) and the bpmn-moddle metamodel, not a flow-model element, and is excluded like the containers and the BPMNDI information because it is not change-addressable; the two JSDoc sentences in `apps/mcp-server/src/prc/moddle.ts` are corrected to match).
+- [x] Task 130.110: Add the message-flow clause to the `parse` tool description in `apps/mcp-server/src/server.ts` (review finding I2): a message flow's source and target are its referenced participants, which are not part of elements -- in the existing string-concatenation style, every line within 120 columns, the rest of the description byte-identical.
+- [x] Task 130.120: Make the `exportProcess` and `parseProcess` not-registered error messages parity-defensive in `apps/mcp-server/src/prc/store.ts` (review finding I3): the interpolated uuid is wrapped with `oneLine(uuid)` and each site carries the explanatory comment citing the finding (defense-in-depth: safe today only because the adapter enforces the v4-shape constraint), matching the `changeProcess` leg; the existing clean-uuid tests are unchanged and stay green (`oneLine` is the identity for them).
+- [x] Task 130.130: Re-wrap the `createServer` JSDoc in `apps/mcp-server/src/server.ts` (review finding I4): the whole block now fills its lines naturally toward the 120-column limit (the two awkward short line pairs left over from the Phase 110 edit are gone); the comment text is byte-identical to the pre-re-wrap text except for where the line breaks fall (verified by whitespace-normalized comparison).
+
 ## Progress
 
 ### Current Status
 
-**As of 2026-11-09**: All three phases implemented and
-committed (9ddb91f, 1aa82d5, 8508017): Phase 100
-`collectAddressableInventory` beside the core walk, Phase 110
-the store-level `parseProcess`, the `parse` tool adapter, and
-the spawn e2e and store unit legs, Phase 120 the full gate
-chain and the C4 container description update. Full gate chain
-green on Node 26: npm ci, lint, format:check, build, 266 tests
-with coverage (95.12% statements / 89.73% branches / 99.31%
-functions / 95.15% lines). All four acceptance criteria met;
-status flipped to review; the PR referencing issue #18
-(Task 120.120) is opened by the orchestrator immediately after.
+**As of 2026-11-09**: Phases 100-120 implemented and
+committed (9ddb91f, 1aa82d5, 8508017); Phase 130 (the
+post-implementation review fixes, findings I1-I4) complete: all
+four missing test legs added -- G1 (dangling flow target), G4
+(sub-process depth), G2 (`parseProcess` path-missing), and G3
+(artifact exclusion, resolved per the orchestrator's option
+(a) after the finding came out wrong as described: a
+`bpmn:Association` is an `Artifact`, not a `FlowElement`, so it
+is excluded from both lists; the leg pins the actual behavior
+and the two JSDoc sentences in `moddle.ts` are corrected, with
+the correction of Phase 100 Decision 1's example recorded in
+the Updates entry) -- plus the `parse` description
+message-flow clause (I2, `server.ts`), the `exportProcess`/
+`parseProcess` not-registered `oneLine` message parity (I3,
+`store.ts`), and the `createServer` JSDoc re-wrap (I4,
+`server.ts`). Gate chain green on Node 26: lint, format:check,
+build, 270 tests with coverage (up from 266: the four added
+legs). Status remains review; PR #22 open.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-09T05:56:50.083Z - Phase 130: post-implementation review fixes (I1-I4 addressed; G3 resolved per option (a): pin actual behavior, correct the JSDoc)
+
+Finding I1 (the four missing test legs): three of the four
+added. G1 in `apps/mcp-server/test/prc/moddle.test.ts` (the leg
+"omits a dangling flow target (the source still resolves)"): a
+sequence flow whose `sourceRef` resolves to a start event and
+whose `targetRef` dangles carries `source` and omits `target`
+(`toStrictEqual`, the symmetric leg of the existing
+source-dangling leg) -- closes review gap G1. G4 in the same
+file (the leg "reaches flow-model elements at any sub-process
+depth"): a `bpmn:subProcess` with an inner start event, task,
+end event, and two inner sequence flows -- the inner elements
+appear in `elements` with their types (and the sub-process
+itself, `bpmn:SubProcess`), the inner flows in `flows` with
+their resolved references, the outer flow resolving to the
+sub-process id -- closes review gap G4 and pins the recorded
+Phase 100 Decision 2 ("at any subprocess depth"). G2 in
+`apps/mcp-server/test/prc/store.test.ts` (the leg "returns a
+structured path-missing error when the own file was deleted out
+of band (REQ-004)"): the `parseProcess` mirror of the existing
+`exportProcess` leg -- import the fixture, `rmSync` the own
+path, parse -> `ok: false` with `error.code === 'path-missing'`
+-- closes review gap G2 and executes the last unexecuted branch
+of `parseProcess` (the `toIoError` leg, `store.ts` ~line 670).
+G3 is resolved per the orchestrator's decision (option (a): pin
+the actual behavior and correct the statements, no core change)
+and added as the fourth leg in `moddle.test.ts` ("excludes
+artifacts from both lists (an association is not a flow-model
+element)"): a collaboration with two participants and a
+`bpmn:association` between them (the association lives in
+`collaboration.artifacts`) -- the association appears in
+NEITHER `elements` NOR `flows`, the participants and the
+processes appear in neither, and the one flow-model element in a
+participant's process appears in `elements`, proving artifact
+exclusion rather than whole-document exclusion. The original
+finding asked to assert that the association "appears in
+`elements` (it is a `bpmn:FlowElement`)", pinning the recorded
+Phase 100 Decision 1 -- that premise was wrong, verified at
+three levels before the decision: the official BPMN 2.0 XSD (the
+bpmn-moddle-bundled `Semantic.xsd` line 66) places
+`association` in `substitutionGroup="artifact"` (extending
+`tArtifact`), the bpmn-moddle metamodel
+(`resources/bpmn/json/bpmn.json`) declares `Association`'s
+superClass as `Artifact` (the attribute names `sourceRef`/
+`targetRef` were verified against it), and an end-to-end run of
+`collectAddressableInventory` returns the association in
+NEITHER list (`$instanceOf('bpmn:FlowElement') === false` at
+runtime). Compressed rationale for pinning the actual behavior:
+REQ-002 scopes `elements` to what the agent addresses by BPMN id
+in `change` calls; `change` (feat-17's editing core) resolves
+ids exclusively through the flow-model walk (`findFlowElement`,
+the recursive `flowElements` walk) and has no operation for
+artifacts, so an association id would be unaddressable --
+listing it in `elements` would advertise an id the agent cannot
+use. Option (b) (broadening the core) was rejected: it would
+contradict the recorded design rationale, change the tool's
+output shape post-PR, and still leave the artifact
+unaddressable by `change`. CORRECTION of the recorded Phase 100
+Decision 1: the rule it states stands unchanged (`flows`
+carries only `bpmn:SequenceFlow` and `bpmn:MessageFlow`; any
+other flow-like element type, expect none in Stage 1 diagrams,
+appears in `elements` but in no `flows` entry), but its example
+was factually wrong -- a `bpmn:Association` is an artifact, not
+a flow-like element, and is excluded from both lists like the
+container elements and the BPMNDI information because it is not
+change-addressable. The two JSDoc sentences in
+`apps/mcp-server/src/prc/moddle.ts` (`collectAddressableInventory`
+and `toFlowRef`) that repeated the wrong example are corrected
+to match.
+
+Finding I2 (the `parse` tool description clause):
+`apps/mcp-server/src/server.ts` -- the flows sentence of the
+`parse` description now reads "(omitted when a reference does
+not resolve; a message flow's source and target are its
+referenced participants, which are not part of elements)",
+inserted in the existing string-concatenation style with every
+line within 120 columns and the rest of the description
+byte-identical. It closes review finding I2 (the description
+claimed the resolved endpoints are "the referenced elements'
+BPMN ids", which is false for `kind: 'message'` -- the
+endpoints are collaboration participants, never in `elements`,
+the recorded Phase 100 Decision 2).
+
+Finding I3 (the store not-registered message parity):
+`apps/mcp-server/src/prc/store.ts` -- `exportProcess` and
+`parseProcess` now single-line the user-input uuid with
+`oneLine(uuid)` before interpolation into the
+`process-not-registered` message, each site carrying the
+explanatory comment citing this finding (defense-in-depth: safe
+today only because the adapter enforces the v4-shape
+constraint), matching the `changeProcess` leg. Identity-safe:
+every existing test uses a clean v4-shaped uuid, for which
+`oneLine` is the identity -- the pinned `process <uuid> is not
+registered` messages in `store.test.ts` (the `exportProcess`
+and `parseProcess` unknown-uuid legs) stay byte-identical and
+unchanged, all green.
+
+Finding I4 (the `createServer` JSDoc re-wrap):
+`apps/mcp-server/src/server.ts` -- the JSDoc block now fills
+its lines naturally toward the 120-column limit (the two
+awkward short line pairs left over from the Phase 110 edit are
+gone); verified the comment text is byte-identical to the
+pre-re-wrap text except for where the line breaks fall
+(whitespace-normalized comparison). `npm run format:check`
+passes.
+
+Gate chain green on Node 26 (lint, format:check, build,
+`npm test -- --coverage`): 270 tests (266 + the four added
+legs), `package-lock.json` unmodified.
 
 #### 2026-11-09T00:29:38.776Z - All phases complete - feature ready for review
 

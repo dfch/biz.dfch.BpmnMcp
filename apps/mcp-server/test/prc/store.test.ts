@@ -502,6 +502,20 @@ describe('PrcStore (REQ-004/REQ-005/REQ-006/REQ-009)', () => {
       const restored = expectParseOk(await store.parseProcess(first.uuid));
       expect(restored.outOfBandReRead).toBe(false);
     });
+
+    it('returns a structured path-missing error when the own file was deleted out of band (REQ-004)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+      rmSync(first.path);
+
+      const result = await store.parseProcess(first.uuid);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error('unreachable: the parse must fail');
+      }
+      expect(result.error.code).toBe('path-missing');
+    });
   });
 
   describe('exportProcess (REQ-006, ACC-005/ACC-009)', () => {

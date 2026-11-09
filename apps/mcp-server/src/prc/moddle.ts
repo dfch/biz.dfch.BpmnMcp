@@ -206,9 +206,12 @@ export function collectElementInventory(rootElement: BpmnRootElement): BpmnEleme
  * any subprocess depth) plus the collaboration-scoped
  * `bpmn:MessageFlow` elements (the metamodel declares them as plain
  * `bpmn:BaseElement`, so they are matched by type). Any other
- * flow-like element (e.g. a `bpmn:Association`) appears in
- * `elements` but in no `flows` entry: `kind` is `sequence` or
- * `message` only.
+ * flow-like element type (expect none in Stage 1 diagrams) would
+ * appear in `elements` but in no `flows` entry: `kind` is `sequence`
+ * or `message` only. Artifacts (e.g. a `bpmn:Association`, a
+ * `bpmn:Group`) are not flow-model elements and are excluded from
+ * both lists, like the container elements and the BPMNDI
+ * information -- they are not change-addressable.
  *
  * The walk is metamodel-driven and cycle-safe exactly like
  * `collectElementInventory` (the shared visited-set loop over the
@@ -315,7 +318,8 @@ function recordAddressableElement(element: ModdleElement, inventory: Addressable
  * The flow entry of the addressable inventory for a sequence or
  * message flow element, or `undefined` for every other element type
  * (`kind` is `sequence` or `message` only -- any other flow-like
- * type, e.g. a `bpmn:Association`, is not an addressable flow).
+ * type, expect none in Stage 1 diagrams, is not an addressable
+ * flow).
  *
  * @param element - The visited flow-model element.
  * @param id - The element's non-empty BPMN `id` (checked by the
