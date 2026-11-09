@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-07T08:56:51.646+01:00'
 id: feat-18-parse-tool
-status: planning
+status: review
 type: feat
-updated: '2026-11-09T01:22:49.577+01:00'
+updated: '2026-11-09T01:32:43.215+01:00'
 version: 1.0.0
 ---
 
@@ -40,10 +40,10 @@ GitHub issue #18.
 
 ### Acceptance Criteria
 
-- [ ] ACC-001: `parse` on the committed fixture `order-process.bpmn` returns exactly the hardcoded expected element and flow literals, deterministically ordered (elements by (type, id), flows by id), with names and condition expressions exactly as present in the file.
-- [ ] ACC-002: An out-of-band edit of the process file between two `parse` calls is detected: the second result reflects the new state and notes the re-read.
-- [ ] ACC-003: Unknown uuid and unparseable-file legs return `isError` single-line; the server stays usable.
-- [ ] ACC-004: The handshake lists `parse` in addition to the existing tools; all pre-existing tests pass; `npm ci`, `lint`, `format:check`, `build`, and `test --coverage` are green on Node 26.
+- [x] ACC-001: `parse` on the committed fixture `order-process.bpmn` returns exactly the hardcoded expected element and flow literals, deterministically ordered (elements by (type, id), flows by id), with names and condition expressions exactly as present in the file.
+- [x] ACC-002: An out-of-band edit of the process file between two `parse` calls is detected: the second result reflects the new state and notes the re-read.
+- [x] ACC-003: Unknown uuid and unparseable-file legs return `isError` single-line; the server stays usable.
+- [x] ACC-004: The handshake lists `parse` in addition to the existing tools; all pre-existing tests pass; `npm ci`, `lint`, `format:check`, `build`, and `test --coverage` are green on Node 26.
 
 ### Scope
 
@@ -116,26 +116,47 @@ GitHub issue #18.
 
 - [x] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier).
 - [x] Task 120.110: Update the C4 container description (the tool list) and this feat's Progress section.
-- [ ] Task 120.120: Open the PR referencing issue #18.
+- [x] Task 120.120: Open the PR referencing issue #18.
 
 ## Progress
 
 ### Current Status
 
-**As of 2026-11-09**: All three phases implemented (Phase 100:
-`collectAddressableInventory` beside the core walk; Phase 110:
-the store-level `parseProcess`, the `parse` tool adapter, the
-spawn e2e legs for ACC-001/ACC-002/ACC-003 and the draft case,
-the handshake updates in both MCP-level suites, the ACC-007
-re-point, and the store unit legs; Phase 120: the full gate
-chain on Node 26 and the C4 container description update). Full
-gate chain green: npm ci, lint, format:check, build, 266 tests
-with coverage (95.12% statements); the PR (Task 120.120) and
-the status flip are the orchestrator's final step.
+**As of 2026-11-09**: All three phases implemented and
+committed (9ddb91f, 1aa82d5, 8508017): Phase 100
+`collectAddressableInventory` beside the core walk, Phase 110
+the store-level `parseProcess`, the `parse` tool adapter, and
+the spawn e2e and store unit legs, Phase 120 the full gate
+chain and the C4 container description update. Full gate chain
+green on Node 26: npm ci, lint, format:check, build, 266 tests
+with coverage (95.12% statements / 89.73% branches / 99.31%
+functions / 95.15% lines). All four acceptance criteria met;
+status flipped to review; the PR referencing issue #18
+(Task 120.120) is opened by the orchestrator immediately after.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-09T00:29:38.776Z - All phases complete - feature ready for review
+
+All three phases are implemented and committed: 9ddb91f
+"feat(feat-18): add the collectAddressableInventory core walk"
+(Phase 100), 1aa82d5 "feat(feat-18): register the parse MCP
+tool" (Phase 110), and 8508017 "docs(feat-18): run the full
+gate chain and update the C4 tool surface" (Phase 120). The
+full gate chain is green on Node 26 with no drift: npm ci
+(`package-lock.json` unmodified), lint, format:check, build,
+and 266 tests with coverage (95.12% statements / 89.73%
+branches / 99.31% functions / 95.15% lines; license-header and
+archunit legs pass within the suite). The C4 container
+description is updated in both `docs/c4` variants (five
+exposed tools including parse; validate and preview remain
+planned). All four acceptance criteria are met: ACC-001 by
+the spawn hardcoded-literal leg, ACC-002 by the spawn
+out-of-band re-read leg, ACC-003 by the spawn unknown-uuid and
+corrupted-file legs, and ACC-004 by the five-tool handshake
+pins in both MCP-level suites plus the full gate chain.
 
 #### 2026-11-09T00:22:49.577Z - Phase 120 implemented (gates and docs)
 
