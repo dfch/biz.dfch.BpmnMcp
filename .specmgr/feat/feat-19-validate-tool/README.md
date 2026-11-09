@@ -118,10 +118,10 @@ in GitHub issue #19.
 
 #### Phase 100: Spike, config, and core
 
-- [ ] Task 100.100: Interop spike: pin the bpmnlint API shape (tree vs XML, finding structure, rule ids of the recommended preset, the exact `bpmnlint` version to commit per the feat-2 precedent of naming the spike's version) and the clean-fixture verdict (is `test/fixtures/order-process.bpmn` lint-clean under `bpmnlint:recommended` as extended by the config?) in a throwaway project outside the repository.
-- [ ] Task 100.110: Add the `bpmnlint` runtime dependency (the exact version the Task 100.100 spike pinned) and the committed `.bpmnlintrc` extending `bpmnlint:recommended`, with package-relative resolution next to `logging.json`; verify `npm audit` against the documented residual.
-- [ ] Task 100.115: Author the flawed lint fixture under `test/fixtures/` (a disconnected element, a process without an end event), settle the clean reference per the Task 100.100 spike verdict (reuse `order-process.bpmn` or author a dedicated lint-clean fixture), and verify the gate exemptions (`.bpmn` fixtures and the `.json` config need no machine-config change - the license gate and Prettier skip unrecognized extensions, the feat-2 "Gates and fixtures" precedent).
-- [ ] Task 100.120: Add the core lint module (config load with structured failure, validate a parsed tree, finding normalization) and unit tests (clean, flawed, missing-config, cwd-independence legs).
+- [x] Task 100.100: Interop spike: pin the bpmnlint API shape (tree vs XML, finding structure, rule ids of the recommended preset, the exact `bpmnlint` version to commit per the feat-2 precedent of naming the spike's version) and the clean-fixture verdict (is `test/fixtures/order-process.bpmn` lint-clean under `bpmnlint:recommended` as extended by the config?) in a throwaway project outside the repository. (bpmnlint 12.0.0 pinned; tree linting via `Linter`/`NodeResolver`, explicit config as the `lint` second argument; clean-fixture verdict: `order-process.bpmn` is lint-clean only with the core's `incoming`/`outgoing` backfill - see the 2026-11-09 Updates entry.)
+- [x] Task 100.110: Add the `bpmnlint` runtime dependency (the exact version the Task 100.100 spike pinned) and the committed `.bpmnlintrc` extending `bpmnlint:recommended`, with package-relative resolution next to `logging.json`; verify `npm audit` against the documented residual. (`bpmnlint: ^12.0.0` in `apps/mcp-server/package.json` dependencies, lockfile at 12.0.0; `apps/mcp-server/.bpmnlintrc` = `{"extends": "bpmnlint:recommended"}`; audit byte-identical to the baseline - only the documented archunit -> minimatch residual.)
+- [x] Task 100.115: Author the flawed lint fixture under `test/fixtures/` (a disconnected element, a process without an end event), settle the clean reference per the Task 100.100 spike verdict (reuse `order-process.bpmn` or author a dedicated lint-clean fixture), and verify the gate exemptions (`.bpmn` fixtures and the `.json` config need no machine-config change - the license gate and Prettier skip unrecognized extensions, the feat-2 "Gates and fixtures" precedent). (`test/fixtures/flawed-process.bpmn` authored: disconnected `orphan-task`, `flawed-process` without an end event; five pinned findings; clean reference: reuse `order-process.bpmn` per the spike verdict - no new file; gate exemptions verified with the full suite green.)
+- [x] Task 100.120: Add the core lint module (config load with structured failure, validate a parsed tree, finding normalization) and unit tests (clean, flawed, missing-config, cwd-independence legs). (`src/prc/lint.ts` + the ambient `src/prc/bpmnlint.d.ts`, `walkElements` exported from `moddle.ts` for the backfill; `test/prc/lint.test.ts` with 11 tests incl. the tree byte-stability and the two cwd-independence legs.)
 
 #### Phase 110: Tool adapter
 
@@ -139,16 +139,152 @@ in GitHub issue #19.
 
 ### Current Status
 
-**As of 2026-11-09**: Planned; the config-location decision is
-recorded (package-relative), and the 2026-11-09 refine-feature pass
-pinned the remaining open points (draft-first uuid resolution, the
-explicit fixture task with the spike-driven clean-fixture verdict, the
-feat-11 `.bpmnlintrc` tarball obligation); no open decisions remain;
-implementation not started.
+**As of 2026-11-09**: Phase 100 (spike, config, and core) is
+complete - implementation started, Phases 110 (tool adapter) and 120
+(gates and docs) pending. `bpmnlint` 12.0.0 is committed as a runtime
+dependency with the package-relative `.bpmnlintrc` extending
+`bpmnlint:recommended` (next to `logging.json`); the core lint module
+(`src/prc/lint.ts`) loads the config with structured failure,
+validates a parsed tree (with the spike-driven `incoming`/`outgoing`
+backfill, restored after the lint), and normalizes findings to
+`{ rule, elementId?, message }`; the fixture pair is settled
+(`flawed-process.bpmn` authored with five pinned findings; the clean
+reference reuses `order-process.bpmn` per the spike verdict). All
+seven gates are green (17 test files / 284 tests; `npm audit`
+unchanged from the baseline - only the documented residual).
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-09T21:10:30.000+01:00 - Phase 100: spike, config, and core
+
+Phase 100 (Tasks 100.100-100.120) landed, all seven quality gates
+green from the repository root:
+
+- **Interop spike (Task 100.100)**: throwaway project
+  (`/tmp/opencode/bpmnlint-spike`, outside the repository,
+  `bpmnlint` latest + `bpmn-moddle` 10.3.1 - the workspace's exact
+  version) pinned: (1) the version to commit is **bpmnlint 12.0.0**
+  (MIT, `engines: node >= 24`; deps `@bpmn-io/lint-core` ^0.1.0,
+  `bpmn-moddle` ^10.1.0, `bpmnlint-utils`, `min-dash`); (2) the entry
+  API lints a **parsed moddle tree, not an XML string**: ESM
+  `import { Linter } from 'bpmnlint'` (named export over the CJS
+  `module.exports = { Linter }`) and
+  `import NodeResolver from 'bpmnlint/lib/resolver/node-resolver'`
+  (default export - the subpath exports the constructor itself);
+  `new Linter({ resolver: new NodeResolver() })`, then
+  `await linter.lint(rootElement, config)` with the **explicit config
+  object as the second argument** - that is the package-relative
+  resolution path: `extends: 'bpmnlint:recommended'` loads through
+  the resolver's package-scoped `requireLocal` (verified identical
+  results from an empty foreign cwd); (3) findings are a rule-keyed
+  report map: `Record<ruleId, { id?, message, path?, meta, category }[]>`
+  - `id` is the attached element's BPMN id (absent for process-level
+    reports); (4) a bad `extends` preset or an unknown rule makes
+    `lint` **throw synchronously** (not a rejection - the resolver
+    throws during config resolution) with
+    `cannot resolve config <X> from <bpmnlint>` /
+    `cannot resolve rule <X> from <bpmnlint>`; (5) the
+    `bpmnlint:recommended` preset carries 26 rules (17 `error`, 9
+    `warn`: `ad-hoc-sub-process`, `conditional-flows`,
+    `end-event-required`, `event-based-gateway`,
+    `event-sub-process-typed-start-event`, `fake-join`, `global`,
+    `label-required`, `link-event`, `no-bpmndi`, `no-complex-gateway`,
+    `no-disconnected`, `no-duplicate-sequence-flows`,
+    `no-gateway-join-fork`, `no-implicit-split`, `no-implicit-end`,
+    `no-implicit-start`, `no-inclusive-gateway`,
+    `no-overlapping-elements`, `single-blank-start-event`,
+    `single-event-definition`, `start-event-required`,
+    `sub-process-blank-start-event`, `superfluous-gateway`,
+    `superfluous-label`, `superfluous-termination`). **The pivotal
+    finding**: the connectivity rules read the derived BPMN 2.0
+    attributes `incoming`/`outgoing` on flow nodes, which the
+    bpmn-moddle parse leaves unset (the XSD declares them as optional
+    child elements; bpmnlint's own rule-test fixtures write them into
+    the XML explicitly). On a plain parse, `order-process.bpmn` reports
+    seven spurious errors (`no-disconnected` x3, `no-implicit-end` x2,
+    `no-implicit-start` x2) - the same CLI output. The core module
+    therefore **backfills `incoming`/`outgoing` from every sequence
+    flow's resolved `sourceRef`/`targetRef` before linting and restores
+    the original property state in a `finally`** (serialization
+    verified byte-identical after the restore, so the store's cached
+    tree stays export-stable). **Clean-fixture verdict**: with the
+    backfill, `test/fixtures/order-process.bpmn` lints to **zero
+    findings** under `bpmnlint:recommended` -> **reused as the clean
+    reference** (no dedicated fixture; the file is untouched).
+- **Dependency and config (Task 100.110)**: `bpmnlint: ^12.0.0`
+  added to `apps/mcp-server/package.json` `dependencies` (caret
+  convention, the feat-2 precedent; the lockfile pins exactly
+  12.0.0, and its `bpmn-moddle` range dedupes to the workspace's
+  10.3.1 - a single copy). The committed `apps/mcp-server/.bpmnlintrc`
+  (plain JSON, next to `logging.json`) is
+  `{"extends": "bpmnlint:recommended"}` - the `extends` value the
+  Phase 110 `config` resource will report. `npm audit` is
+  byte-identical to the pre-change baseline (verified by re-running
+  the audit against the HEAD manifests): the single documented
+  residual, archunit -> minimatch 10.2.6 (GHSA-g3hv-75wg-m249,
+  moderate, listed twice - once per tree node). No new advisories
+  from bpmnlint or its transitive deps.
+- **Fixtures (Task 100.115)**: `test/fixtures/flawed-process.bpmn`
+  authored - a valid, parseable process `flawed-process` with a
+  named start event, a `review` task, one sequence flow, a
+  disconnected `orphan-task` (no sequence flow to/from it), and no
+  end event, plus non-overlapping BPMNDI shapes (so
+  `no-bpmndi`/`no-overlapping-elements`/`label-required` stay quiet
+  and only the intended flaws report). Pinned findings (spike + unit
+  test): `end-event-required` @ `flawed-process` ("Process is missing
+  end event"), `no-disconnected` @ `orphan-task` ("Element is not
+  connected"), `no-implicit-end` @ `orphan-task` and @ `review`
+  ("Element is an implicit end"), `no-implicit-start` @ `orphan-task`
+  ("Element is an implicit start") - the two intended flaws plus the
+  connectivity consequences the recommended preset derives from the
+  same gaps. Gate exemptions verified (feat-2 precedent): the
+  license-header gate skips `.bpmn` and `.bpmnlintrc`
+  (unrecognized extension / JSON - no comment support) and Prettier
+  matches neither; no machine-config change was needed, and the full
+  suite (incl. the `git ls-files`-based license gate) passes with
+  both files present. No existing test scans `test/fixtures/` by
+  name (all fixture access is by explicit filename; the inventory
+  scans target `BPMN_MCP_DOCS_DIR`), so the new file changes no
+  existing behavior.
+- **Core module (Task 100.120)**: `src/prc/lint.ts` (the
+  bpmnlint touch point, mirroring how `moddle.ts` owns bpmn-moddle):
+  `loadLintConfig(packageRoot = PACKAGE_ROOT)` - the committed config
+  resolved package-relative (never `process.cwd()`), a missing file
+  is the structured `config-missing` failure and a non-object file
+  (unparseable JSON, array, scalar, directory) is `config-invalid` -
+  single-line message naming the path, never a throw (ACC-005;
+  unlike `logging.json` there is no default to fall through to);
+  `lintTree(rootElement, config)` - a fresh `Linter` + `NodeResolver`
+  lints the tree with the derived-attribute backfill restored in
+  `finally`, an unresolvable config (the synchronous throw pinned
+  above) is the structured `lint-failed` failure; `validateTree`
+  composes load + lint; findings normalize to
+  `{ rule, elementId?, message }` (a process-level report carries no
+  `elementId`), sorted by rule then element id for determinism. The
+  ambient declaration `src/prc/bpmnlint.d.ts` closes the same
+  no-`types`-condition gap as `bpmn-moddle.d.ts` (documenting the
+  spike-verified CJS/ESM import shapes and the synchronous-throw
+  caveat); `walkElements` is exported from `moddle.ts` for the
+  backfill's cycle-safe walk. Unit tests `test/prc/lint.test.ts`
+  (11 tests): the clean reference yields zero findings; the flawed
+  fixture yields the five pinned findings (exact rule ids, element
+  attachment, messages); a validation leaves the tree's
+  serialization byte-identical (the backfill/restore contract);
+  missing/malformed/non-object configs are structured failures; the
+  bad-extends leg is a structured `lint-failed`; two
+  cwd-independence legs (ACC-006) `chdir` into a temp dir and assert
+  the same resolved path/config and the same pinned findings
+  (restored in `afterEach`).
+- **Gate evidence**: `npm ci` (exit 0, fresh install from the
+  updated lockfile); `npm run lint` (clean); `npm run format:check`
+  (all matched files OK); `npm run build` (type-check + emit,
+  `dist/` rebuilt for the spawn tests); `npm test -- --coverage`
+  (17 files / 284 tests passed; coverage report-only per QA 0.0260);
+  `npm audit` (only the documented residual - identical listing to
+  the pre-change baseline); `uvx pre-commit run --all-files` (all
+  seven hooks passed).
 
 #### 2026-11-09T18:17:10.000+01:00 - Refine-feature findings incorporated (pre-implementation)
 
@@ -178,6 +314,43 @@ and QA pairs 7.0020/1.0060.
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-09T21:10:30.000+01:00 - Phase 100: the pinned bpmnlint version, the derived-attribute backfill, and the clean-reference verdict
+
+Pinned by the Phase 100 spike and implementation: (1) the exact
+`bpmnlint` version to commit is **12.0.0** (the spike's version,
+declared `^12.0.0` per the workspace caret convention, lockfile-pinned
+to 12.0.0) - the 12.x line is a thin wrapper over the internal
+`@bpmn-io/lint-core` package, which the spike verified against
+bpmn-moddle 10.3.1 (the workspace's exact version; the lockfile
+dedupes to a single bpmn-moddle copy); (2) the **clean-reference
+verdict: reuse `test/fixtures/order-process.bpmn`** - it lints to
+zero findings under the committed config, but only with decision (3):
+the core lint module **backfills the derived BPMN 2.0 attributes
+`incoming`/`outgoing` from the sequence flows' resolved
+`sourceRef`/`targetRef` before linting and restores the original
+property state afterwards** (a `finally`, byte-stable serialization
+verified) - without it, the `bpmnlint:recommended` connectivity rules
+(`no-disconnected`, `no-implicit-start`, `no-implicit-end`) misfire on
+every connected diagram, because the bpmn-moddle parse leaves the
+derived attributes unset (bpmnlint's own rule-test fixtures write
+them into the XML explicitly); the backfill is the interop contract
+of `lintTree`/`validateTree`, so Phase 110's tool adapter gets it for
+free; (3) the config-load failure codes are **`config-missing`**
+(absent file) and **`config-invalid`** (unparseable/non-object file),
+plus **`lint-failed`** for linter-level resolution failures (unknown
+`extends` preset or rule - bpmnlint throws these synchronously from
+`lint`, so the core guards the call); all follow the store's
+kebab-case `PrcError` code convention; (4) findings are normalized to
+`{ rule, elementId?, message }` and sorted by rule then element id
+(deterministic output regardless of the linter's rule resolution
+order); (5) the flawed fixture `test/fixtures/flawed-process.bpmn`
+pins five findings - the two intended flaws
+(`no-disconnected` @ `orphan-task`, `end-event-required` @
+`flawed-process`) plus the recommended preset's derived
+consequences (`no-implicit-end` @ `orphan-task` and @ `review`,
+`no-implicit-start` @ `orphan-task`) - all asserted exactly (rule id,
+element attachment, message).
 
 #### 2026-11-09T18:17:10.000+01:00 - Draft-first resolution, the spike-driven clean fixture, and the feat-11 obligation
 
