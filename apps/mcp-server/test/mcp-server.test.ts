@@ -7,12 +7,11 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ModdleElement } from 'moddle';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { LoggingConfig } from '../src/config.js';
 import { readPackageMetadata } from '../src/package-metadata.js';
 import { resolveDocsPrcDir } from '../src/paths.js';
-import { parseBpmn } from '../src/prc/moddle.js';
+import { collectAddressableInventory, collectElementInventory, parseBpmn } from '../src/prc/moddle.js';
 import type { PrcLogger } from '../src/prc/store.js';
 import { PrcStore } from '../src/prc/store.js';
 import { createServer } from '../src/server.js';
@@ -77,6 +76,15 @@ interface ChangeSuccessPayload {
   [detail: string]: unknown;
 }
 
+/** The `parse` tool result's success JSON (feat-18 REQ-001). */
+interface ParseSuccessPayload {
+  uuid: string;
+  elements: { id: string; type: string; name?: string }[];
+  flows: { id: string; kind: string; source?: string; target?: string; conditionExpression?: string }[];
+  outOfBandReRead: boolean;
+  note?: string;
+}
+
 interface LogRecord {
   level: 'info' | 'warn' | 'error';
   event: string | undefined;
@@ -139,124 +147,11 @@ async function changeSuccess(client: Client, args: Record<string, unknown>): Pro
   return JSON.parse(outcome.text) as ChangeSuccessPayload;
 }
 
-/** One element of the ACC-007 inventory: the BPMN id, type, and name. */
-interface InventoryElement {
-  id: string;
-  type: string;
-  name: string | undefined;
-}
-
-/** One flow of the ACC-007 inventory: the id, source, and target. */
-interface InventoryFlow {
-  id: string;
-  source: string | undefined;
-  target: string | undefined;
-}
-
-/** The ACC-007 round-trip inventory: the elements plus the flows. */
-interface RoundTripInventory {
-  elements: InventoryElement[];
-  flows: InventoryFlow[];
-}
-
-/** Type guard: is this value a moddle element (anything carrying a string `$type`)? */
-function isModdleElement(value: unknown): value is ModdleElement {
-  return value !== null && typeof value === 'object' && typeof (value as ModdleElement).$type === 'string';
-}
-
-/** The id of an element reference, whether resolved (an element) or raw (a string). */
-function referenceId(reference: unknown): string | undefined {
-  if (typeof reference === 'string' && reference.length > 0) {
-    return reference;
-  }
-  if (isModdleElement(reference) && typeof reference.id === 'string' && reference.id.length > 0) {
-    return reference.id;
-  }
-  return undefined;
-}
-
-/**
- * The ACC-007 round-trip inventory (a test-local richer walk): every
- * element's BPMN id, type, and name, plus every sequence flow's id,
- * source, and target. The production `collectElementInventory`
- * carries only id/type, so the walk is duplicated here rather than
- * the production module extended for the test's sake (plan,
- * Progress 2026-11-01, Decisions Made (4)). Deterministically
- * sorted, like the production one.
- *
- * @param xml - The BPMN 2.0 XML to parse and walk.
- */
-async function collectRoundTripInventory(xml: string | Uint8Array): Promise<RoundTripInventory> {
-  const root = (await parseBpmn(xml)).rootElement;
-  const inventory: RoundTripInventory = { elements: [], flows: [] };
-  const seen = new Set<object>();
-
-  const visit = (element: ModdleElement): void => {
-    if (seen.has(element)) {
-      return;
-    }
-    seen.add(element);
-    recordInventoryElement(element, inventory);
-    for (const child of childReferences(element)) {
-      visit(child);
-    }
-  };
-
-  visit(root);
-  inventory.elements.sort((a, b) => {
-    const keyA = `${a.type}\u0000${a.id}`;
-    const keyB = `${b.type}\u0000${b.id}`;
-    return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
-  });
-  inventory.flows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  return inventory;
-}
-
-/**
- * Records the element (and, for a sequence flow, its source and
- * target) in the inventory, when it carries a non-empty `id`.
- *
- * @param element - The visited element.
- * @param inventory - The inventory being built (mutated).
- */
-function recordInventoryElement(element: ModdleElement, inventory: RoundTripInventory): void {
-  const id = element.id;
-  if (typeof id !== 'string' || id.length === 0) {
-    return;
-  }
-  const name = typeof element.name === 'string' ? element.name : undefined;
-  inventory.elements.push({ id, type: element.$type, name });
-  if (element.$type === 'bpmn:SequenceFlow') {
-    inventory.flows.push({ id, source: referenceId(element.sourceRef), target: referenceId(element.targetRef) });
-  }
-}
-
-/**
- * The moddle elements this element directly references: the values
- * of its many-valued element-array properties plus its single-valued
- * element-reference properties (mirroring the production walk).
- *
- * @param element - The visited element.
- */
-function childReferences(element: ModdleElement): ModdleElement[] {
-  const children: ModdleElement[] = [];
-  const descriptor = element.$descriptor;
-  if (descriptor === undefined || !Array.isArray(descriptor.properties)) {
-    return children;
-  }
-  for (const property of descriptor.properties) {
-    const value = element[property.name];
-    if (property.isMany && Array.isArray(value)) {
-      for (const child of value) {
-        if (isModdleElement(child)) {
-          children.push(child);
-        }
-      }
-    } else if (isModdleElement(value)) {
-      children.push(value);
-    }
-  }
-  return children;
+/** Calls `parse` and narrows the success JSON (the test expects success). */
+async function parseSuccess(client: Client, uuid: string): Promise<ParseSuccessPayload> {
+  const outcome = await callTool(client, 'parse', { uuid });
+  expect(outcome.isError).toBe(false);
+  return JSON.parse(outcome.text) as ParseSuccessPayload;
 }
 
 describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
@@ -359,10 +254,10 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
     });
   });
 
-  it('lists exactly the four tools: change, create, export, import (feat-17 ACC-004)', async () => {
-    // The handshake lists create and change in addition to the existing tools.
+  it('lists exactly the five tools: change, create, export, import, parse (feat-18 ACC-004)', async () => {
+    // The handshake lists create, change, and parse in addition to the existing tools.
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name).sort()).toEqual(['change', 'create', 'export', 'import']);
+    expect(tools.map((tool) => tool.name).sort()).toEqual(['change', 'create', 'export', 'import', 'parse']);
   });
 
   describe('the import tool (REQ-005, REQ-007, ACC-002/ACC-003/ACC-004)', () => {
@@ -825,6 +720,55 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
     });
   });
 
+  describe('the parse tool (feat-18 REQ-001/REQ-004, adapter leg)', () => {
+    // The exact-literal, out-of-band, draft, and server-usability legs
+    // live in the spawn suite (Task 110.110); this block pins only the
+    // adapter mapping: the success JSON shape and the input rejections.
+
+    it('parses an imported process: the success JSON shape, no note (REQ-001)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const imported = await importSuccess(client, source);
+
+      const parsed = await parseSuccess(client, imported.uuid);
+
+      expect(parsed.uuid).toBe(imported.uuid);
+      expect(parsed.outOfBandReRead).toBe(false);
+      expect(parsed.note).toBeUndefined();
+      expect(parsed.elements.length).toBeGreaterThan(0);
+      for (const element of parsed.elements) {
+        expect(typeof element.id).toBe('string');
+        expect(typeof element.type).toBe('string');
+      }
+      expect(parsed.flows.length).toBeGreaterThan(0);
+      for (const flow of parsed.flows) {
+        expect(flow.kind).toMatch(/^(sequence|message)$/);
+      }
+    });
+
+    it('maps an unknown uuid to a single-line isError result (REQ-004)', async () => {
+      const unknown = 'ffffffff-ffff-4fff-afff-ffffffffffff';
+
+      const outcome = await callTool(client, 'parse', { uuid: unknown });
+
+      expect(outcome.isError).toBe(true);
+      expect(outcome.text).toBe(`process ${unknown} is not registered`);
+      expect(outcome.text).not.toContain('\n');
+    });
+
+    it('rejects a malformed uuid shape via zod (no crash, an isError result)', async () => {
+      const missing = await callTool(client, 'parse', {});
+      expect(missing.isError).toBe(true);
+      expect(missing.text.length).toBeGreaterThan(0);
+
+      const wrongShape = await callTool(client, 'parse', { uuid: 'not-a-uuid' });
+      expect(wrongShape.isError).toBe(true);
+      expect(wrongShape.text).not.toContain('\n');
+      expect(wrongShape.text).toMatch(/at uuid/);
+
+      expect(existsSync(resolveDocsPrcDir())).toBe(false);
+    });
+  });
+
   describe('the 1.0070 round-trip (ACC-007, in-process leg)', () => {
     it('import + export preserves the full element/flow inventory', async () => {
       const source = copyFixture(ORDER_FIXTURE, 'my-diagram.bpmn');
@@ -835,18 +779,37 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
       const outcome = await callTool(client, 'export', { uuid: imported.uuid, path: exportPath });
 
       expect(outcome.isError).toBe(false);
-      const sourceInventory = await collectRoundTripInventory(sourceXml);
-      const exportInventory = await collectRoundTripInventory(readFileSync(exportPath));
-      expect(sourceInventory.elements.length).toBeGreaterThan(0);
-      expect(sourceInventory.flows.length).toBeGreaterThan(0);
-      expect(exportInventory.elements).toEqual(sourceInventory.elements);
-      expect(exportInventory.flows).toEqual(sourceInventory.flows);
+      const sourceTree = (await parseBpmn(sourceXml)).rootElement;
+      const exportTree = (await parseBpmn(readFileSync(exportPath))).rootElement;
+
+      // The production inventories stand in for the former test-local
+      // walk, which was duplicated here because the production
+      // `collectElementInventory` carried only id/type and was not
+      // extended for the test's sake (feat-2's plan, Progress
+      // 2026-11-01, Decisions Made (4)); the sibling-function decision
+      // (this plan's Progress 2026-11-08, Decisions Made (1), and its
+      // Phase 100) supplies the richer addressable walk instead.
+      const sourceAddressable = collectAddressableInventory(sourceTree);
+      const exportAddressable = collectAddressableInventory(exportTree);
+      expect(sourceAddressable.elements.length).toBeGreaterThan(0);
+      expect(sourceAddressable.flows.length).toBeGreaterThan(0);
+      expect(exportAddressable.elements).toEqual(sourceAddressable.elements);
+      expect(exportAddressable.flows).toEqual(sourceAddressable.flows);
+
+      // The full id-set invariance, BPMNDI included (the addressable
+      // inventory excludes the container and diagram interchange
+      // information on purpose, so the two production walks cover
+      // strictly different slices).
+      const sourceFull = collectElementInventory(sourceTree);
+      const exportFull = collectElementInventory(exportTree);
+      expect(exportFull).toEqual(sourceFull);
+      expect(sourceFull.length).toBeGreaterThan(sourceAddressable.elements.length);
 
       // Pin the reference shape: every flow carries its resolved
       // source and target (the walk's reference handling works).
-      expect(sourceInventory.flows).toEqual([
-        { id: 'flow-1', source: 'start-event', target: 'review-task' },
-        { id: 'flow-2', source: 'review-task', target: 'end-event' },
+      expect(sourceAddressable.flows).toEqual([
+        { id: 'flow-1', kind: 'sequence', source: 'start-event', target: 'review-task' },
+        { id: 'flow-2', kind: 'sequence', source: 'review-task', target: 'end-event' },
       ]);
     });
   });

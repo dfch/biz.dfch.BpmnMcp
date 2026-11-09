@@ -21,11 +21,13 @@ import {
 import { buildPrcFilename, deriveSlug, generateUuid, parsePrcFilename } from './filename.js';
 import {
   BpmnParseError,
+  collectAddressableInventory,
   collectElementInventory,
   getProcessId,
   oneLine,
   parseBpmn,
   serializeBpmn,
+  type AddressableInventory,
   type BpmnElementRef,
   type BpmnRootElement,
 } from './moddle.js';
@@ -60,10 +62,16 @@ import {
  * file-backed process is write-through (REQ-005): the mutation is
  * serialized to the process's own file and the cached checksum
  * updated, keeping the file the single source of truth; `change` on
- * a draft mutates the in-memory draft tree only.
+ * a draft mutates the in-memory draft tree only. `parse` (feat-18)
+ * is read-only in both cases: a draft is served from its in-memory
+ * tree (no file access, no checksum, `outOfBandReRead` false); a
+ * registered process is served after the conditional re-read,
+ * carrying the addressable inventory of the current tree (the
+ * flow-model elements with their names, the sequence and message
+ * flows with their resolved references).
  *
  * The operations return plain typed result objects (no MCP SDK
- * types -- the Phase 110 adapter maps them to tool results).
+ * types -- the adapter layer maps them to tool results).
  * Expected failures (a missing source, a directory source,
  * unparseable XML, an unregistered UUID, a failed read/write, a
  * malformed editing input) are structured `ok: false` results;
@@ -185,6 +193,25 @@ export interface ChangeFailure {
 }
 
 export type ChangeResult = ChangeSuccess | ChangeFailure;
+
+/** The `parse` success result (feat-18 REQ-001). */
+export interface ParseSuccess {
+  ok: true;
+  /** The process UUID. */
+  uuid: string;
+  /** The addressable inventory of the current tree (the flow-model elements, the flows). */
+  inventory: AddressableInventory;
+  /** Whether the conditional re-read detected an out-of-band change (REQ-004; false for drafts). */
+  outOfBandReRead: boolean;
+}
+
+/** The `parse` failure result (a store failure). */
+export interface ParseFailure {
+  ok: false;
+  error: PrcError;
+}
+
+export type ParseResult = ParseSuccess | ParseFailure;
 
 /**
  * The minimal structural logger the store needs. A pino `Logger`
@@ -492,9 +519,12 @@ export class PrcStore {
     }
     const entry = this.cache.get(uuid);
     if (entry === undefined) {
+      // The uuid is user input: single-line it before interpolation
+      // (feat-18 review finding I3, defense-in-depth: safe today only
+      // because the adapter enforces the v4-shape constraint).
       return {
         ok: false,
-        error: { code: 'process-not-registered', message: `process ${uuid} is not registered` },
+        error: { code: 'process-not-registered', message: `process ${oneLine(uuid)} is not registered` },
       };
     }
 
@@ -591,6 +621,66 @@ export class PrcStore {
       'exported a session draft and promoted it to the inventory',
     );
     return { ok: true, uuid, path: ownPath, outOfBandReRead: false, promoted: true };
+  }
+
+  /**
+   * The `parse` operation (feat-18 REQ-001..REQ-004): serves the
+   * process's current state as the addressable inventory -- every
+   * flow-model element with its BPMN id, type, and name, plus every
+   * sequence and message flow with its id, kind, resolved
+   * source/target, and condition expression text. Read-only:
+   * nothing is written, and the only possible cache effect is the
+   * conditional re-read's own update. Resolves the UUID DRAFT-FIRST:
+   * a session draft is served from its in-memory tree (no file
+   * access, no checksum -- there is nothing to hash;
+   * `outOfBandReRead` is false); a registered process is served
+   * after the conditional re-read (REQ-003). An unregistered UUID is
+   * a structured error in every directory state; a re-read that no
+   * longer parses is `not-bpmn`; a filesystem failure is
+   * `read-failed` (the cache stays untouched, as in the siblings).
+   *
+   * @param uuid - The process UUID (a draft or a registered process).
+   */
+  async parseProcess(uuid: string): Promise<ParseResult> {
+    precondition(uuid.length > 0, 'the process uuid must be a non-empty string');
+    const draft = this.drafts.get(uuid);
+    if (draft !== undefined) {
+      this.logger.info(
+        { event: 'prc-parse', uuid, outOfBandReRead: false },
+        'parsed a session-draft BPMN process (in memory only)',
+      );
+      return { ok: true, uuid, inventory: collectAddressableInventory(draft.tree), outOfBandReRead: false };
+    }
+
+    const entry = this.cache.get(uuid);
+    if (entry === undefined) {
+      // The uuid is user input: single-line it before interpolation
+      // (feat-18 review finding I3, defense-in-depth: safe today only
+      // because the adapter enforces the v4-shape constraint).
+      return {
+        ok: false,
+        error: { code: 'process-not-registered', message: `process ${oneLine(uuid)} is not registered` },
+      };
+    }
+
+    let reRead: boolean;
+    let current: CacheEntry | undefined;
+    try {
+      reRead = (await this.ensureCurrentTree(uuid, entry.path)).reRead;
+      current = this.cache.get(uuid);
+      precondition(current !== undefined, `process ${uuid} must stay registered during parse`);
+    } catch (error) {
+      if (error instanceof BpmnParseError) {
+        return { ok: false, error: { code: 'not-bpmn', message: error.message } };
+      }
+      return { ok: false, error: this.toIoError(error, 'read-failed', entry.path) };
+    }
+
+    this.logger.info(
+      { event: 'prc-parse', uuid, path: current.path, outOfBandReRead: reRead },
+      'parsed a registered BPMN process',
+    );
+    return { ok: true, uuid, inventory: collectAddressableInventory(current.tree), outOfBandReRead: reRead };
   }
 
   /** Dispatches an editing operation onto a tree (the change op's core leg). */
