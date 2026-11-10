@@ -133,7 +133,7 @@ in GitHub issue #19.
 
 - [x] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier). (the final-state confirming run after the C4 edits - all seven commands green, no drift found to fix: `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, `npm test -- --coverage` (17 files / 304 tests), `npm audit` (byte-identical to the documented residual), `uvx pre-commit run --all-files` (all seven hooks passed).)
 - [x] Task 120.110: Update both C4 variants - `docs/c4/c4-container.puml` and `docs/c4/workspace.dsl` (kept byte-identical per the feat-17/18 convention) - moving `validate` from the planned list into the exposed tools (six tools; only `preview` remains planned), and update this feat's Progress section. (exactly one line changed per file; the shared description now reads "Exposes six MCP tools (create, change, import, export, parse, validate) ... the remaining Stage 1 tool (preview) is planned." - byte-identity between the variants verified by sha256 of the extracted description before and after the edit.)
-- [ ] Task 120.120: Open the PR referencing issue #19. (left to the orchestrator's final step - the feat-18 convention - together with the frontmatter status flip from planning to review.)
+- [x] Task 120.120: Open the PR referencing issue #19. (Executed by the orchestrator's final step per the feat-18 convention: PR #23, base dev, opened against the four feature commits; the frontmatter status flip to review committed separately.)
 
 ## Progress
 
@@ -155,8 +155,8 @@ exposed tools (create, change, import, export, parse,
 validate) with only `preview` remaining planned (the variants'
 descriptions stay byte-identical, the feat-17/18 convention).
 Task 120.120 (open the PR referencing GitHub issue #19) and the
-frontmatter status flip are left to the orchestrator's final
-step.
+frontmatter status flip were executed by the orchestrator's final
+step (PR #23 open against dev; status review).
 
 Background: `bpmnlint` 12.0.0 is committed as a runtime
 dependency with the package-relative `.bpmnlintrc` extending
@@ -608,3 +608,4 @@ repository root. No new `BPMN_MCP_*` variable is introduced.
 ### Related PRs / Commits
 
 - GitHub issue #19
+- PR #23 (feat-19-validate-tool → dev): the validate MCP tool
