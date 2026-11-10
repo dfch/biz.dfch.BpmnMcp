@@ -131,27 +131,32 @@ in GitHub issue #19.
 
 #### Phase 120: Gates and docs
 
-- [ ] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier).
-- [ ] Task 120.110: Update both C4 variants - `docs/c4/c4-container.puml` and `docs/c4/workspace.dsl` (kept byte-identical per the feat-17/18 convention) - moving `validate` from the planned list into the exposed tools (six tools; only `preview` remains planned), and update this feat's Progress section.
-- [ ] Task 120.120: Open the PR referencing issue #19.
+- [x] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier). (the final-state confirming run after the C4 edits - all seven commands green, no drift found to fix: `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, `npm test -- --coverage` (17 files / 304 tests), `npm audit` (byte-identical to the documented residual), `uvx pre-commit run --all-files` (all seven hooks passed).)
+- [x] Task 120.110: Update both C4 variants - `docs/c4/c4-container.puml` and `docs/c4/workspace.dsl` (kept byte-identical per the feat-17/18 convention) - moving `validate` from the planned list into the exposed tools (six tools; only `preview` remains planned), and update this feat's Progress section. (exactly one line changed per file; the shared description now reads "Exposes six MCP tools (create, change, import, export, parse, validate) ... the remaining Stage 1 tool (preview) is planned." - byte-identity between the variants verified by sha256 of the extracted description before and after the edit.)
+- [ ] Task 120.120: Open the PR referencing issue #19. (left to the orchestrator's final step - the feat-18 convention - together with the frontmatter status flip from planning to review.)
 
 ## Progress
 
 ### Current Status
 
-**As of 2026-11-09**: Phase 110 (tool adapter) is complete -
-implementation in progress, Phase 120 (gates and docs) pending.
-The `validate` tool is registered on top of the store's new
-`validateProcess` operation (draft-first, the conditional re-read,
-the full structured-error set including the lint core's config
-failures); the `config` resource reports the preset the committed
-`.bpmnlintrc` extends (or the core's structured load failure,
-ACC-005); the handshake is the six-tool surface; the lint core's
-backfill now covers the `$parent` back-reference as well (the
-Phase 110 fix, so seeded drafts and in-session promotions lint
-sound). All seven gates are green (17 test files / 304 tests;
-`npm audit` unchanged from the baseline - only the documented
-residual).
+**As of 2026-11-10**: Phases 100-120 are implemented and
+committed (e74c611 "feat(feat-19): add the bpmnlint dep,
+.bpmnlintrc config, and core lint module" - Phase 100; c27760c
+"feat(feat-19): add the validate MCP tool and wire the config
+resource" - Phase 110; the Phase 120 docs/gates commit - the C4
+tool-surface correction and this bookkeeping - lands on top) -
+the feature implementation is complete and pending review.
+All seven quality gates are green on Node 26 in the final-state
+confirming run (17 test files / 304 tests; `npm audit`
+unchanged from the baseline - only the documented archunit ->
+minimatch 10.2.6 residual, listed twice). The C4 container
+description in both `docs/c4` variants now lists the six
+exposed tools (create, change, import, export, parse,
+validate) with only `preview` remaining planned (the variants'
+descriptions stay byte-identical, the feat-17/18 convention).
+Task 120.120 (open the PR referencing GitHub issue #19) and the
+frontmatter status flip are left to the orchestrator's final
+step.
 
 Background: `bpmnlint` 12.0.0 is committed as a runtime
 dependency with the package-relative `.bpmnlintrc` extending
@@ -168,6 +173,63 @@ per the spike verdict).
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-10T02:03:57.000+01:00 - Phase 120: gates and docs
+
+Phase 120 (Tasks 120.100-120.110) landed. The full gate chain
+re-ran green on Node 26 as the final-state confirming run,
+after the C4 edits, with no drift found to fix (all seven
+commands from the repository root):
+
+- **Gate evidence (Task 120.100)**: `npm ci` (exit 0, fresh
+  install from the lockfile - `package-lock.json` unmodified,
+  this phase added no dependencies); `npm run lint` (exit 0,
+  clean); `npm run format:check` (exit 0, "All matched files
+  use Prettier code style!" - `docs/` is in `.prettierignore`,
+  so the C4 edits are exempt); `npm run build` (exit 0,
+  type-check + emit, `dist/` rebuilt for the spawn tests);
+  `npm test -- --coverage` (exit 0, 17 test files / 304 tests
+  passed; coverage report-only per QA 0.0260: 94.8%
+  statements, 88.47% branches, 99.38% functions, 94.83%
+  lines - identical to the Phase 110 baseline); `npm audit`
+  (only the documented residual - archunit -> minimatch 10.2.6,
+  GHSA-g3hv-75wg-m249, moderate, listed twice: byte-identical
+  to the Phase 100/110 baseline, as the npm manifests and
+  lockfile are unchanged since c27760c); `uvx pre-commit run
+--all-files` (all seven hooks passed: check yaml, fix end of
+  files, trim trailing whitespace, ESLint, Prettier, tsc,
+  vitest).
+- **C4 correction (Task 120.110)**: the MCP Server container
+  description in both `docs/c4/c4-container.puml` and
+  `docs/c4/workspace.dsl` moves `validate` from the planned
+  list into the exposed tools - exactly one line changed per
+  file (verified by `git diff`), everything else untouched,
+  and the pre-existing "bpmnlint validation (.bpmnlintrc,
+  bpmnlint:recommended)" core-enumeration clause left as is
+  (accurate, landed with the Phase 100 description). The
+  shared sentence reads: before - "Exposes five MCP tools
+  (create, change, import, export, parse) and two MCP
+  resources (version, config) over stdio; the remaining Stage
+  1 tools (validate, preview) are planned."; after - "Exposes
+  six MCP tools (create, change, import, export, parse,
+  validate) and two MCP resources (version, config) over
+  stdio; the remaining Stage 1 tool (preview) is planned."
+  **Byte-identity proof (the feat-17/18 convention)**: the
+  description string was extracted from each file before and
+  after the edit and compared - before: both 1101 chars,
+  sha256
+  4afae27609ce33b706dc4e020ae13a0a616ab9166d2e3da880022f13797cb61b
+  (identical in both files); after: both 1098 chars, sha256
+  c2443719988302e49a7a4bcb6c1363a5438f3fb8d7e88f01026518d6cea92bed
+  (identical in both files), and `diff` of the two
+  after-extractions exits 0 with no output; with the
+  corrected sentence masked out, the rest of each description
+  is byte-identical to its pre-edit text.
+- **Task 120.120 and the status flip**: left to the
+  orchestrator's final step (the feat-18 convention) - open
+  the PR referencing GitHub issue #19 and flip the frontmatter
+  status from planning to review; the Task 120.120 checkbox
+  stays unticked in this plan.
 
 #### 2026-11-10T00:50:48.000+01:00 - Phase 110: tool adapter (validate tool, config resource, the $parent backfill fix, tests)
 
