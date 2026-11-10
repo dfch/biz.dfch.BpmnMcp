@@ -2,13 +2,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import pino from 'pino';
+import { PACKAGE_ROOT } from '../../src/package-root.js';
 import { buildPrcFilename } from '../../src/prc/filename.js';
 import {
   collectAddressableInventory,
@@ -17,7 +28,7 @@ import {
   parseBpmn,
   serializeBpmn,
 } from '../../src/prc/moddle.js';
-import type { CreateResult, ImportResult, ParseResult, PrcLogger } from '../../src/prc/store.js';
+import type { CreateResult, ImportResult, ParseResult, PrcLogger, ValidateResult } from '../../src/prc/store.js';
 import { PrcStore } from '../../src/prc/store.js';
 
 // Resolve the fixture directory independent of the test runner's
@@ -27,6 +38,22 @@ const FIXTURES_DIR = resolve(fileURLToPath(new URL('../fixtures/', import.meta.u
 const ORDER_FIXTURE = join(FIXTURES_DIR, 'order-process.bpmn');
 const NO_ID_FIXTURE = join(FIXTURES_DIR, 'no-process-id.bpmn');
 const MALFORMED_FIXTURE = join(FIXTURES_DIR, 'malformed.bpmn');
+const FLAWED_FIXTURE = join(FIXTURES_DIR, 'flawed-process.bpmn');
+
+/**
+ * The pinned findings of the flawed fixture under the committed
+ * config (feat-19 Task 100.100 spike; the same set the lint core
+ * pins in `test/prc/lint.test.ts` and the MCP-level suite pins in
+ * `test/mcp-server.test.ts`): deterministic order, by rule, then
+ * element id.
+ */
+const FLAWED_EXPECTED = [
+  { rule: 'end-event-required', elementId: 'flawed-process', message: 'Process is missing end event' },
+  { rule: 'no-disconnected', elementId: 'orphan-task', message: 'Element is not connected' },
+  { rule: 'no-implicit-end', elementId: 'orphan-task', message: 'Element is an implicit end' },
+  { rule: 'no-implicit-end', elementId: 'review', message: 'Element is an implicit end' },
+  { rule: 'no-implicit-start', elementId: 'orphan-task', message: 'Element is an implicit start' },
+];
 
 const UUID_V4_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -71,6 +98,15 @@ function expectParseOk(result: ParseResult): Extract<ParseResult, { ok: true }> 
   expect(result.ok).toBe(true);
   if (!result.ok) {
     throw new Error('unreachable: the parse result must be a success');
+  }
+  return result;
+}
+
+/** Narrows a `ValidateResult` to its success side for the test body. */
+function expectValidateOk(result: ValidateResult): Extract<ValidateResult, { ok: true }> {
+  expect(result.ok).toBe(true);
+  if (!result.ok) {
+    throw new Error('unreachable: the validate result must be a success');
   }
   return result;
 }
@@ -515,6 +551,179 @@ describe('PrcStore (REQ-004/REQ-005/REQ-006/REQ-009)', () => {
         throw new Error('unreachable: the parse must fail');
       }
       expect(result.error.code).toBe('path-missing');
+    });
+  });
+
+  describe('validateProcess (feat-19 REQ-004, ACC-005)', () => {
+    // The legs point the store's lint config load at a temporary
+    // package root carrying a COPY of the committed .bpmnlintrc (the
+    // store parameter, Phase 110), so the committed file is never
+    // touched; the `extends` preset resolves package-relative to
+    // bpmnlint itself, so the copy lints identically (Task 100.100
+    // spike).
+    let lintRoot: string;
+
+    beforeEach(() => {
+      lintRoot = join(tempDir, 'lint-root');
+      mkdirSync(lintRoot);
+      writeFileSync(join(lintRoot, '.bpmnlintrc'), readFileSync(join(PACKAGE_ROOT, '.bpmnlintrc')));
+    });
+
+    it('lints a registered process: the flawed fixture yields the five pinned findings, no re-read when unchanged', async () => {
+      const source = copyFixture(FLAWED_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+
+      const result = expectValidateOk(await store.validateProcess(first.uuid, lintRoot));
+
+      expect(result.uuid).toBe(first.uuid);
+      expect(result.outOfBandReRead).toBe(false);
+      expect(result.findings).toEqual(FLAWED_EXPECTED);
+      const info = records.find((record) => record.event === 'prc-validate');
+      expect(info?.level).toBe('info');
+    });
+
+    it('lints a registered process: the clean reference yields no findings (the spike verdict)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+
+      const result = expectValidateOk(await store.validateProcess(first.uuid, lintRoot));
+
+      expect(result.uuid).toBe(first.uuid);
+      expect(result.outOfBandReRead).toBe(false);
+      expect(result.findings).toEqual([]);
+      const info = records.find((record) => record.event === 'prc-validate');
+      expect(info?.level).toBe('info');
+    });
+
+    it('lints a session draft from its in-memory tree without a file access (REQ-004)', async () => {
+      const created = expectCreated(await store.createProcess('Validate Draft'));
+
+      const result = expectValidateOk(await store.validateProcess(created.uuid, lintRoot));
+
+      expect(result.uuid).toBe(created.uuid);
+      expect(result.outOfBandReRead).toBe(false);
+      // The empty process reports exactly the two required-event
+      // findings on the process id.
+      expect(result.findings).toEqual([
+        { rule: 'end-event-required', elementId: 'validate-draft', message: 'Process is missing end event' },
+        { rule: 'start-event-required', elementId: 'validate-draft', message: 'Process is missing start event' },
+      ]);
+      // No file access: the prc directory does not even exist.
+      expect(existsSync(prcDir)).toBe(false);
+      const info = records.find((record) => record.event === 'prc-validate');
+      expect(info?.level).toBe('info');
+    });
+
+    it('returns a structured not-registered error for an unknown uuid in every directory state (REQ-004)', async () => {
+      const unknown = 'ffffffff-ffff-4fff-afff-ffffffffffff';
+      const expectedError = {
+        ok: false,
+        error: { code: 'process-not-registered', message: `process ${unknown} is not registered` },
+      } as const;
+
+      // (a) the directory is absent.
+      let result = await store.validateProcess(unknown, lintRoot);
+      expect(result).toEqual(expectedError);
+      expect(existsSync(prcDir)).toBe(false);
+
+      // (b) the directory is empty.
+      mkdirSync(prcDir, { recursive: true });
+      result = await store.validateProcess(unknown, lintRoot);
+      expect(result).toEqual(expectedError);
+
+      // (c) the directory is populated with a conforming file that was
+      // never imported in this session -- registration is in-memory only.
+      const diskOnlyUuid = '11111111-1111-4111-8111-111111111111';
+      writeFileSync(join(prcDir, buildPrcFilename(diskOnlyUuid, 'disk-only')), readFileSync(ORDER_FIXTURE));
+      result = await store.validateProcess(unknown, lintRoot);
+      expect(result).toEqual(expectedError);
+    });
+
+    it('detects an out-of-band change on the next validate and serves the modification (REQ-004)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+      writeFileSync(first.path, readFileSync(first.path, 'utf8').replace('name="Review order"', 'name="Second look"'));
+
+      const result = expectValidateOk(await store.validateProcess(first.uuid, lintRoot));
+
+      expect(result.outOfBandReRead).toBe(true);
+      // The rename changes no findings: the clean reference stays clean.
+      expect(result.findings).toEqual([]);
+      expect(records.some((record) => record.event === 'prc-reread-out-of-band')).toBe(true);
+    });
+
+    it('returns a structured not-bpmn error when the own file no longer parses (REQ-004)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+      const originalBytes = readFileSync(first.path);
+      writeFileSync(first.path, 'this is not BPMN');
+
+      const result = await store.validateProcess(first.uuid, lintRoot);
+
+      // (1) a structured not-bpmn result with a single-line message.
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error('unreachable: a validate over a corrupted own file must fail');
+      }
+      expect(result.error.code).toBe('not-bpmn');
+      expect(result.error.message).toMatch(/^failed to parse BPMN 2\.0 XML: /);
+      expect(result.error.message).not.toMatch(/[\r\n]/);
+
+      // (2) the registration is left intact: restoring the original
+      // bytes is a cache hit (no re-read note) on the next validate.
+      writeFileSync(first.path, originalBytes);
+      const restored = expectValidateOk(await store.validateProcess(first.uuid, lintRoot));
+      expect(restored.outOfBandReRead).toBe(false);
+      expect(restored.findings).toEqual([]);
+    });
+
+    it('returns a structured path-missing error when the own file was deleted out of band (REQ-004)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+      rmSync(first.path);
+
+      const result = await store.validateProcess(first.uuid, lintRoot);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error('unreachable: the validate must fail');
+      }
+      expect(result.error.code).toBe('path-missing');
+    });
+
+    it('returns a structured read-failed error when the own file is unreadable (REQ-004, Phase 130 G1)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const first = expectImportOk(await store.importProcess(source));
+      const originalMode = statSync(first.path).mode & 0o777;
+
+      // The tests run as a non-root user, so chmod 000 makes the own
+      // file unreadable (EACCES) and the re-read hits the non-ENOENT
+      // branch of toIoError. The mode is restored in a finally, even
+      // on an assertion failure.
+      let result: ValidateResult;
+      try {
+        chmodSync(first.path, 0);
+        result = await store.validateProcess(first.uuid, lintRoot);
+      } finally {
+        chmodSync(first.path, originalMode);
+      }
+
+      // (1) a structured read-failed result: a single-line message
+      // naming the own path.
+      expect(result.ok).toBe(false);
+      if (result.ok) {
+        throw new Error('unreachable: a validate over an unreadable own file must fail');
+      }
+      expect(result.error.code).toBe('read-failed');
+      expect(result.error.message.startsWith(`failed to read ${first.path}: `)).toBe(true);
+      expect(result.error.message).toMatch(/EACCES: permission denied/);
+      expect(result.error.message).not.toMatch(/[\r\n]/);
+
+      // (2) the registration is left usable: with the mode restored,
+      // the next validate is a cache hit with the clean findings.
+      const restored = expectValidateOk(await store.validateProcess(first.uuid, lintRoot));
+      expect(restored.outOfBandReRead).toBe(false);
+      expect(restored.findings).toEqual([]);
     });
   });
 

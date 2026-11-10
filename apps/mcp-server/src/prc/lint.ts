@@ -233,10 +233,12 @@ interface OriginalFlowRefs {
  * same session, whose built tree the store caches without a
  * re-parse) never set it. The same three connectivity rules read
  * `node.$parent` unguarded (`is(node.$parent, 'bpmn:AdHocSubProcess')`);
- * without this pass they crash per element on built trees, and
- * bpmnlint records each TypeError as a finding (Phase 110
- * verification: a sound seeded draft reported three crash-derived
- * findings).
+ * without this pass they crash per element on built trees: the
+ * linter aborts that rule's walk on the first exception and records
+ * exactly one `rule-error` finding per affected rule (plus a
+ * `console.error` to stderr -- the MCP protocol owns stdout only)
+ * (Phase 110 verification: a sound seeded draft reported three
+ * crash-derived findings, one per affected rule).
  *
  * The backfill is temporary by design: the caller's tree -- in
  * particular the store's cached tree, whose serialization must stay

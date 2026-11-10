@@ -10,7 +10,7 @@
  * subpath `./lib/resolver/node-resolver` carry no `types` condition
  * (only the types-only subpath `./lib/types` does), so the ESM
  * imports have no declarations of their own -- the same gap the
- * `bpmn-moddle` ambient declaration above closes.
+ * neighboring `bpmn-moddle.d.ts` ambient declaration closes.
  *
  * The runtime shapes were verified against the package's `lib` and
  * its internal `@bpmn-io/lint-core` dependency by the feat-19 Task

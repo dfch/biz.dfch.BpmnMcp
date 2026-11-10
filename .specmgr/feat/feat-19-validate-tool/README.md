@@ -135,28 +135,37 @@ in GitHub issue #19.
 - [x] Task 120.110: Update both C4 variants - `docs/c4/c4-container.puml` and `docs/c4/workspace.dsl` (kept byte-identical per the feat-17/18 convention) - moving `validate` from the planned list into the exposed tools (six tools; only `preview` remains planned), and update this feat's Progress section. (exactly one line changed per file; the shared description now reads "Exposes six MCP tools (create, change, import, export, parse, validate) ... the remaining Stage 1 tool (preview) is planned." - byte-identity between the variants verified by sha256 of the extracted description before and after the edit.)
 - [x] Task 120.120: Open the PR referencing issue #19. (Executed by the orchestrator's final step per the feat-18 convention: PR #23, base dev, opened against the four feature commits; the frontmatter status flip to review committed separately.)
 
+#### Phase 130: Post-implementation review fixes
+
+- [x] Task 130.100: Close review gaps G1/G2 - add the store-level `validateProcess` test block to `test/prc/store.test.ts` mirroring the feat-18 `parseProcess` block (the `prc-validate` log events pinned in the draft and the registered legs, the unknown-uuid leg in all three directory states, the out-of-band re-read detection leg, the `not-bpmn` leg with the registration left intact, the `path-missing` leg, and the review's missing `read-failed` leg (G1) for the non-`ENOENT` branch of `toIoError`), using a temporary lint root (the store parameter already accepts one). (`describe('validateProcess (feat-19 REQ-004, ACC-005)')` with eight legs: the flawed fixture's five pinned findings, the clean reference's none (spike verdict), the session draft's two required-event findings - every success leg pinning the `prc-validate` info event; the unknown-uuid leg in all three directory states; the out-of-band re-read detection leg; the `not-bpmn` leg with the registration left intact (cache hit after restore); the `path-missing` leg; and the G1 `read-failed` leg (chmod 000 -> EACCES, the mode restored in a `finally`; single-line `failed to read <path>: ...` message; the registration usable afterwards). The config load points at a per-test temporary lint root carrying a copy of the committed `.bpmnlintrc` - the committed file is never touched.)
+- [x] Task 130.110: Close review gap I1 - add the two untested `config` resource branches (an array `extends` reports the comma-joined preset; a config without any `extends` reports the `none` sentinel) as MCP-level legs via the injected temporary lint root. (two legs in the injected-lint-root describe of `test/mcp-server.test.ts`: `{"extends": ["a", "b"]}` -> `bpmnlint: { preset: 'a, b' }`; `{}` -> `{ preset: 'none' }` - `server.ts:93-96` now covered, `server.ts` at 100% statements / 95% branches.)
+- [x] Task 130.120: Close review gap I4 - pin the lint core backfill's defensive branches with an explicit-derived-references XML fixture leg (explicit `<incoming>`/`<outgoing>` child elements and raw-string flow references: the backfill dedupes instead of doubling, restores the pre-existing arrays exactly, and the serialization stays byte-identical), and record a decision for the `$parent` non-own-property restore branch (pin it with a cheap direct leg if one exists, otherwise document it as defensive and unreachable through the server's own operations). (new `test/fixtures/explicit-refs.bpmn`: the clean reference's graph with explicit single-text-ref `<incoming>`/`<outgoing>` child elements on all four node-flow edges plus one sequence flow whose `sourceRef`/`targetRef` do not resolve (the raw-string refs, unresolvable after the parse); the `validateTree` leg in `test/prc/lint.test.ts` pins the explicit findings equal to the implicit counterpart's (both zero), the pre-existing arrays restored by reference identity (never doubled), and byte-identical serialization. The `$parent` non-own-restore branch is recorded as defensive and unreachable in this phase's Decisions entry.)
+- [x] Task 130.130: Close review nits I2/I3 (doc precision) - reword the "bpmnlint records each TypeError as a finding" claim (plan Decisions Made, Phase 110 item 4, and the `lint.ts` JSDoc) to the verified mechanism (the first exception aborts that rule's walk; exactly one `rule-error` finding per affected rule, plus a `console.error` to stderr), and correct `bpmnlint.d.ts`'s "the ambient declaration above" to the neighboring-file wording. (the Phase 110 Decisions entry amended in place, the `backfillDerivedReferences` JSDoc reworded to the verified `rule-error` mechanism, and `bpmnlint.d.ts` corrected to the neighboring `bpmn-moddle.d.ts` wording - no test pins changed, the observed finding counts were already correct.)
+
 ## Progress
 
 ### Current Status
 
-**As of 2026-11-10**: Phases 100-120 are implemented and
+**As of 2026-11-10**: Phases 100-130 are implemented and
 committed (e74c611 "feat(feat-19): add the bpmnlint dep,
 .bpmnlintrc config, and core lint module" - Phase 100; c27760c
 "feat(feat-19): add the validate MCP tool and wire the config
-resource" - Phase 110; the Phase 120 docs/gates commit - the C4
-tool-surface correction and this bookkeeping - lands on top) -
-the feature implementation is complete and pending review.
-All seven quality gates are green on Node 26 in the final-state
-confirming run (17 test files / 304 tests; `npm audit`
-unchanged from the baseline - only the documented archunit ->
-minimatch 10.2.6 residual, listed twice). The C4 container
-description in both `docs/c4` variants now lists the six
-exposed tools (create, change, import, export, parse,
-validate) with only `preview` remaining planned (the variants'
-descriptions stay byte-identical, the feat-17/18 convention).
-Task 120.120 (open the PR referencing GitHub issue #19) and the
-frontmatter status flip were executed by the orchestrator's final
-step (PR #23 open against dev; status review).
+resource" - Phase 110; 5c8fec0 "docs(feat-19): correct the C4
+tool surface (six tools, only preview planned)" - Phase 120;
+this phase's post-implementation review fixes land on top) -
+the feature implementation is complete and the
+post-implementation review's findings (G1, G2, I1, I2, I3,
+I4) are closed. All seven quality gates are green on Node 26
+in this phase's final-state confirming run (17 test files /
+315 tests, up from 304; `npm audit` unchanged from the
+baseline - only the documented archunit -> minimatch 10.2.6
+residual, listed twice). All six acceptance criteria are met
+(ACC-001..ACC-006); the C4 container description in both
+`docs/c4` variants lists the six exposed tools with only
+`preview` remaining planned (the variants' descriptions stay
+byte-identical, the feat-17/18 convention). The frontmatter
+status remains review and PR #23 (base dev, opened against
+GitHub issue #19) stays open and untouched.
 
 Background: `bpmnlint` 12.0.0 is committed as a runtime
 dependency with the package-relative `.bpmnlintrc` extending
@@ -173,6 +182,166 @@ per the spike verdict).
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-10T11:50:34.000+01:00 - Phase 130: post-implementation review fixes (G1/G2, I1-I4 closed)
+
+Phase 130 (Tasks 130.100-130.130) closed the five findings of the
+post-implementation review (feat-reviewer, verdict READY), all
+seven quality gates green from the repository root. Test-only plus
+doc-precision changes: no production behavior changed, the
+committed `.bpmnlintrc` and the existing fixtures were never
+touched, and no test pin was weakened.
+
+- **G2 (the store-level `validateProcess` block)**: new
+  `describe('validateProcess (feat-19 REQ-004, ACC-005)')` in
+  `apps/mcp-server/test/prc/store.test.ts`, mirroring the feat-18
+  `parseProcess` block leg-for-leg (eight legs): "lints a
+  registered process: the flawed fixture yields the five pinned
+  findings, no re-read when unchanged" (the `FLAWED_EXPECTED` set,
+  a local pin like the lint-core and MCP-level suites), "lints a
+  registered process: the clean reference yields no findings (the
+  spike verdict)", "lints a session draft from its in-memory tree
+  without a file access (REQ-004)" (the two required-event
+  findings on the process id, the prc directory never created) -
+  every success leg pinning the `prc-validate` info log event
+  (level + event name, as the parse block pins `prc-parse`) - plus
+  "returns a structured not-registered error for an unknown uuid
+  in every directory state (REQ-004)" (all three directory
+  states), "detects an out-of-band change on the next validate and
+  serves the modification (REQ-004)" (the `prc-reread-out-of-band`
+  warn event, the rename keeps the clean reference clean),
+  "returns a structured not-bpmn error when the own file no longer
+  parses (REQ-004)" (the registration left intact: a cache hit
+  with no re-read note after the bytes are restored), "returns a
+  structured path-missing error when the own file was deleted out
+  of band (REQ-004)", and the G1 leg below. The finding pins run
+  against a per-test TEMPORARY LINT ROOT (the store's
+  `lintPackageRoot` parameter, Phase 110) carrying a copy of the
+  committed `.bpmnlintrc` - the committed file is never touched or
+  read-modified, and the copy lints identically because the
+  `extends` preset resolves package-relative to `bpmnlint` itself
+  (Task 100.100 spike), not to the config's location.
+- **G1 (the missing `read-failed` leg)**: "returns a structured
+  read-failed error when the own file is unreadable (REQ-004,
+  Phase 130 G1)" in the same block: the process's own file is
+  made unreadable with `chmod 000` (the tests run as a non-root
+  user, so the re-read's `readFile` yields EACCES - the
+  non-`ENOENT` branch of `PrcStore.toIoError`, previously
+  unexercised for every operation in the repo), the original mode
+  captured beforehand and restored in a `finally` even on an
+  assertion failure. Asserted: `ok: false`,
+  `error.code === 'read-failed'`, a single-line message starting
+  with `failed to read <own path>: ` and carrying the EACCES
+  cause, and the registration left usable afterwards (the next
+  validate is a cache hit with the clean findings, no re-read
+  note). A vitest `readFile` stub was considered and not used -
+  the real syscall error is the stronger pin (see Decisions).
+- **I1 (the untested `config` resource branches)**: two
+  MCP-level legs in `apps/mcp-server/test/mcp-server.test.ts`
+  (the existing injected-lint-root describe, the
+  `createServer` third parameter): "an array extends reports the
+  comma-joined preset in the config resource (Phase 130 I1)" - a
+  temporary lint root with `{"extends": ["a", "b"]}` reports
+  `bpmnlint: { preset: 'a, b' }` - and "a config without any
+  extends reports the none sentinel in the config resource
+  (Phase 130 I1)" - a temporary lint root with `{}` reports
+  `{ preset: 'none' }`. `server.ts:93-96` (the `bpmnlintResourceInfo`
+  array and `none` branches) is now covered.
+- **I4 (the backfill's defensive branches)**: new fixture
+  `apps/mcp-server/test/fixtures/explicit-refs.bpmn` - a valid,
+  parseable BPMN 2.0 document carrying the clean reference's
+  graph (start event -> task -> end event, two sequence flows,
+  non-overlapping BPMNDI) plus: (a) explicit `<incoming>`/
+  `<outgoing>` child elements on every flow node (single text
+  refs each, the form moddle resolves to the process-level flow
+  instances - the nested-element form was rejected in the
+  authoring experiment: it silently drops to an empty array), and
+  (b) a third sequence flow `flow-dangling` whose `sourceRef`/
+  `targetRef` name no element (raw string refs in the XML that
+  stay unresolvable after the parse, so the backfill's
+  endpoint-skip branch runs on both endpoints). The `validateTree`
+  leg "dedupes the explicit derived references and restores the
+  pre-existing arrays exactly (Phase 130 I4)" in
+  `apps/mcp-server/test/prc/lint.test.ts` pins: the explicit
+  fixture yields the SAME findings as the semantically identical
+  implicit-refs diagram (the same XML with the explicit ref lines
+  stripped) and both are zero (no doubling of the derived refs, no
+  spurious connectivity findings); the four pre-existing explicit
+  arrays are restored by REFERENCE identity (the backfill's dedupe
+  left them alone, the restore put the originals back), each
+  still of length one; the dangling flow's refs stay undefined
+  (the skip-branch precondition); and the tree's serialization is
+  byte-identical before/after the validation. Gate exemption
+  verified, not assumed: the license-header gate's
+  `commentPrefixFor` returns null for `.bpmn` (the file is
+  scanned by `git ls-files --others` but no in-scope test is
+  generated for it, like the sibling fixtures) and Prettier's
+  directory scan infers no parser for the extension - the full
+  gate chain below ran green with the file present. The `$parent`
+  non-own-property restore branch (`delete child.$parent`,
+  `lint.ts:327`) remains the single backfill branch left
+  uncovered: it is DEFENSIVE and UNREACHABLE through the
+  server's own operations (see Decisions), so it is documented
+  rather than forced with a test-only tree mutation.
+- **I2 (the mechanism wording, amended in place)**: the Phase 110
+  Decisions Made entry (item 4) is corrected in place (this
+  Updates entry records the correction, the feat-18 G3 convention;
+  the entry's structure is kept). The sentence "bpmnlint records
+  each TypeError as a finding, so a sound seeded draft reported
+  three crash-derived findings, violating the
+  finding-normalization contract" now reads "the linter aborts
+  that rule's walk on the first exception and records exactly one
+  `rule-error` finding per affected rule (plus a `console.error`
+  to stderr), so a sound seeded draft reported three crash-derived
+  findings (one per affected rule), violating the
+  finding-normalization contract". The same claim in the
+  `backfillDerivedReferences` JSDoc (`apps/mcp-server/src/prc/
+lint.ts`, paragraph (2)) is reworded to the verified mechanism:
+  "without this pass they crash per element on built trees, and
+  bpmnlint records each TypeError as a finding (Phase 110
+  verification: a sound seeded draft reported three crash-derived
+  findings)" now reads "without this pass they crash per element
+  on built trees: the linter aborts that rule's walk on the first
+  exception and records exactly one `rule-error` finding per
+  affected rule (plus a `console.error` to stderr -- the MCP
+  protocol owns stdout only) (Phase 110 verification: a sound
+  seeded draft reported three crash-derived findings, one per
+  affected rule)". Pure rewording: the observed counts (three
+  crash findings = one per affected rule) were already correct, so
+  no test pin changed.
+- **I3 (the sibling-file wording)**: `apps/mcp-server/src/prc/
+bpmnlint.d.ts` (module header): "the same gap the
+  `bpmn-moddle` ambient declaration above closes" now reads "the
+  same gap the neighboring `bpmn-moddle.d.ts` ambient declaration
+  closes" (`bpmn-moddle.d.ts` is a sibling file in `src/prc/`,
+  not above).
+- **Gate evidence** (all seven commands, from the repository
+  root, Node 26.13.0): `npm ci` (exit 0, fresh install from the
+  lockfile - this phase added no dependencies); `npm run lint`
+  (exit 0, clean); `npm run format:check` (exit 0, "All matched
+  files use Prettier code style!" - the new fixture is not
+  matched, the plan's body edits keep the file Prettier-stable);
+  `npm run build` (exit 0, type-check + emit, `dist/` rebuilt for
+  the spawn tests); `npm test -- --coverage` (exit 0, **17 test
+  files / 315 tests passed**, up from 304 - +8 store-level
+  `validateProcess` legs, +2 MCP-level `config` resource legs, +1
+  lint-core explicit-refs leg; coverage report-only per QA 0.0260:
+  95.32% statements, 90.09% branches, 99.38% functions, 95.35%
+  lines, up from 94.8/88.47/99.38/94.83 - `server.ts` 100%
+  statements / 95% branches with the `bpmnlintResourceInfo`
+  array/`none` branches now covered; `lint.ts` 95.06% statements
+  / 83.67% branches, remaining uncovered lines 116
+  (unreadable-config `readFileSync` catch, pre-existing), 286
+  (the `record` already-recorded guard, pre-existing), 327 (the
+  documented defensive `$parent` non-own restore branch), 369
+  (the `compareFindings` equal-key return, pre-existing)); `npm
+audit` (only the documented residual - archunit -> minimatch
+  10.2.6, GHSA-g3hv-75wg-m249, moderate, listed twice:
+  byte-identical to the Phase 100/110/120 baseline, as the npm
+  manifests and lockfile are unchanged); `uvx pre-commit run
+--all-files` (all seven hooks passed: check yaml, fix end of
+  files, trim trailing whitespace, ESLint, Prettier, tsc,
+  vitest).
 
 #### 2026-11-10T02:03:57.000+01:00 - Phase 120: gates and docs
 
@@ -498,6 +667,42 @@ and QA pairs 7.0020/1.0060.
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
 
+#### 2026-11-10T11:50:34.000+01:00 - Phase 130: the read-failed leg's mechanism, the $parent non-own restore branch, and the I2 mechanism amendment
+
+Decided in Phase 130 (closing the post-implementation review's
+findings): (1) G1's `read-failed` leg uses the REAL SYSCALL
+FAILURE, not a stub -- the tests run as a non-root user (uid
+1000), so `chmod 000` on the process's own file makes the
+re-read's `readFile` fail with EACCES, genuinely exercising the
+non-`ENOENT` branch of `PrcStore.toIoError` (the `read-failed`
+code). The original mode is captured beforehand and restored in a
+`finally`, so the leg is safe even under an assertion failure; a
+vitest `readFile` stub was considered and rejected: it would
+exercise the same branch, but pinning the real `ErrnoException`'s
+shape (the message's `EACCES: permission denied` cause included)
+is the stronger pin, and a mock could drift from the syscall's
+error. (2) I4's `$parent` non-own restore branch (`delete
+child.$parent` when `$parent` was not an own property,
+`lint.ts:327`) is DEFENSIVE AND UNREACHABLE through the server's
+own operations and is left unpinned -- verified empirically
+against the workspace's bpmn-moddle 10.3.1: an element created
+via `moddle.create` carries `$parent` as an OWN property (value
+`undefined`), and the parser sets `$parent` on every element it
+builds (own, value set), so the backfill's first-write-wins guard
+(`child.$parent !== undefined`) only ever sees a child whose
+`$parent` is own-and-set (parsed trees, left untouched) or
+own-and-undefined (built trees, restored by the reset branch,
+pinned by the Phase 110 draft legs); no public operation produces
+a child lacking `$parent` as an own property, and forcing one via
+a test-only tree mutation was explicitly not done. (3) I2's
+mechanism correction is recorded as an AMENDMENT NOTE to the
+Phase 110 entry (the feat-18 G3 convention): the Decisions entry
+is corrected in place and this phase's Updates entry records the
+correction; the Phase 110 Updates entry's dated aside "(the
+TypeError recorded as a finding)" is left as-is -- it is a
+historical log, and the authoritative mechanism statements (the
+Decisions entry and the `lint.ts` JSDoc) are now corrected.
+
 #### 2026-11-10T00:50:48.000+01:00 - Phase 110: store-side lint composition, the injectable lint root, the config failure shape, and the extended derived-reference backfill ($parent)
 
 Decided in Phase 110: (1) the lint is composed in the STORE -- a
@@ -538,12 +743,14 @@ tree (no re-parse) make seeded drafts a first-class `validate`
 target, and without the pass bpmnlint's connectivity rules
 (`no-disconnected`, `no-implicit-start`, `no-implicit-end`) crash
 per element on the unset `$parent` (`is(node.$parent,
-'bpmn:AdHocSubProcess')`) -- bpmnlint records each TypeError as a
-finding, so a sound seeded draft reported three crash-derived
-findings, violating the finding-normalization contract (verified
-against the built dist by the orchestrator; pinned by the new unit
-leg, the in-memory seeded-draft and promotion legs, and the spawn
-seeded-draft leg). The draft legs pin: the EMPTY `create`d process
+'bpmn:AdHocSubProcess')`): the linter aborts that rule's walk on
+the first exception and records exactly one `rule-error` finding
+per affected rule (plus a `console.error` to stderr), so a sound
+seeded draft reported three crash-derived findings (one per
+affected rule), violating the finding-normalization contract
+(verified against the built dist by the orchestrator; pinned by
+the new unit leg, the in-memory seeded-draft and promotion legs,
+and the spawn seeded-draft leg). The draft legs pin: the EMPTY `create`d process
 (exactly two findings: `end-event-required` + `start-event-required`
 on the process id), the sound SEEDED draft (zero findings), and the
 PROMOTED seeded draft (zero findings, same session).

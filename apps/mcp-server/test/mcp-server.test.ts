@@ -1097,6 +1097,36 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
         await injected.close();
       }
     });
+
+    it('an array extends reports the comma-joined preset in the config resource (Phase 130 I1)', async () => {
+      const lintRoot = join(tempDir, 'lint-array-extends');
+      mkdirSync(lintRoot);
+      writeFileSync(join(lintRoot, '.bpmnlintrc'), JSON.stringify({ extends: ['a', 'b'] }));
+      const injected = await connectInjected(lintRoot);
+
+      try {
+        // The resource joins the array preset with ", " (the
+        // bpmnlintResourceInfo array branch).
+        expect(await readBpmnlintConfigMember(injected)).toEqual({ preset: 'a, b' });
+      } finally {
+        await injected.close();
+      }
+    });
+
+    it('a config without any extends reports the none sentinel in the config resource (Phase 130 I1)', async () => {
+      const lintRoot = join(tempDir, 'lint-no-extends');
+      mkdirSync(lintRoot);
+      writeFileSync(join(lintRoot, '.bpmnlintrc'), '{}');
+      const injected = await connectInjected(lintRoot);
+
+      try {
+        // The resource reports the `none` sentinel (the otel member's
+        // `disabled` convention) when the config extends no preset.
+        expect(await readBpmnlintConfigMember(injected)).toEqual({ preset: 'none' });
+      } finally {
+        await injected.close();
+      }
+    });
   });
 
   describe('the 1.0070 round-trip (ACC-007, in-process leg)', () => {

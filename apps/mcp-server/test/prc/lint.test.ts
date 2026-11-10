@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { ModdleElement } from 'moddle';
 import { PACKAGE_ROOT } from '../../src/package-root.js';
 import { connect, createProcess } from '../../src/prc/editing.js';
 import { loadLintConfig, lintTree, validateTree } from '../../src/prc/lint.js';
@@ -17,6 +18,7 @@ import { parseBpmn, serializeBpmn } from '../../src/prc/moddle.js';
 const FIXTURES_DIR = resolve(fileURLToPath(new URL('../fixtures/', import.meta.url)));
 const ORDER_FIXTURE = join(FIXTURES_DIR, 'order-process.bpmn');
 const FLAWED_FIXTURE = join(FIXTURES_DIR, 'flawed-process.bpmn');
+const EXPLICIT_FIXTURE = join(FIXTURES_DIR, 'explicit-refs.bpmn');
 const COMMITTED_CONFIG = join(PACKAGE_ROOT, '.bpmnlintrc');
 
 /**
@@ -132,6 +134,82 @@ describe('the lint core (feat-19 REQ-001/REQ-002, Task 100.120)', () => {
       // The backfilled incoming/outgoing references must not leak into
       // the tree: a subsequent export/serialization is byte-identical.
       expect(await serializeBpmn(tree)).toBe(before);
+    });
+
+    it('dedupes the explicit derived references and restores the pre-existing arrays exactly (Phase 130 I4)', async () => {
+      // The explicit-refs fixture: the clean reference's graph
+      // (start -> task -> end), but every flow node carries its
+      // derived <incoming>/<outgoing> child elements explicitly
+      // (single text refs, which the moddle parse resolves to the
+      // process-level flow instances) plus a third sequence flow
+      // whose sourceRef/targetRef do not resolve (raw string refs in
+      // the XML, unresolvable after the parse) so the backfill's
+      // endpoint-skip branch runs.
+      const explicitXml = readFileSync(EXPLICIT_FIXTURE, 'utf8');
+      // The semantically identical implicit-refs diagram: the same
+      // XML without the explicit <incoming>/<outgoing> lines.
+      const implicitXml = explicitXml
+        .split('\n')
+        .filter((line) => !/<(bpmn:)?(incoming|outgoing)>/.test(line))
+        .join('\n');
+
+      const explicitTree = (await parseBpmn(explicitXml)).rootElement;
+      const implicitTree = (await parseBpmn(implicitXml)).rootElement;
+      const process = explicitTree.rootElements.find(
+        (element: ModdleElement) => element.$type === 'bpmn:Process',
+      ) as ModdleElement;
+      const byId = (id: string) => process.flowElements.find((element: ModdleElement) => element.id === id);
+      const start = byId('start-event');
+      const task = byId('review-task');
+      const end = byId('end-event');
+      const dangling = byId('flow-dangling');
+
+      // The explicit text refs resolved to the pre-existing arrays,
+      // and the dangling flow's refs stayed unresolvable (the
+      // skip-branch precondition).
+      expect(start.outgoing?.[0].id).toBe('flow-1');
+      expect(task.incoming?.[0].id).toBe('flow-1');
+      expect(task.outgoing?.[0].id).toBe('flow-2');
+      expect(end.incoming?.[0].id).toBe('flow-2');
+      expect(dangling.sourceRef).toBeUndefined();
+      expect(dangling.targetRef).toBeUndefined();
+      const startOutgoingBefore = start.outgoing;
+      const taskIncomingBefore = task.incoming;
+      const taskOutgoingBefore = task.outgoing;
+      const endIncomingBefore = end.incoming;
+      const before = await serializeBpmn(explicitTree);
+
+      const explicitResult = await validateTree(explicitTree);
+      const implicitResult = await validateTree(implicitTree);
+
+      expect(explicitResult.ok).toBe(true);
+      if (!explicitResult.ok) {
+        throw new Error('unreachable: validating the explicit-refs fixture must succeed');
+      }
+      expect(implicitResult.ok).toBe(true);
+      if (!implicitResult.ok) {
+        throw new Error('unreachable: validating the implicit-refs diagram must succeed');
+      }
+      // The same findings as the semantically identical implicit-refs
+      // diagram (no doubling of the derived refs, no spurious
+      // connectivity findings) -- and lint-clean.
+      expect(explicitResult.findings).toEqual(implicitResult.findings);
+      expect(explicitResult.findings).toEqual([]);
+
+      // The pre-existing explicit arrays were restored exactly
+      // (reference identity: the backfill's dedupe left them alone
+      // and the restore put the originals back), never doubled.
+      expect(start.outgoing).toBe(startOutgoingBefore);
+      expect(task.incoming).toBe(taskIncomingBefore);
+      expect(task.outgoing).toBe(taskOutgoingBefore);
+      expect(end.incoming).toBe(endIncomingBefore);
+      expect(start.outgoing).toHaveLength(1);
+      expect(task.incoming).toHaveLength(1);
+      expect(task.outgoing).toHaveLength(1);
+      expect(end.incoming).toHaveLength(1);
+
+      // The serialization stays byte-identical before/after.
+      expect(await serializeBpmn(explicitTree)).toBe(before);
     });
 
     it('reports no findings for a sound in-process-built draft (the $parent backfill, Phase 110)', async () => {
