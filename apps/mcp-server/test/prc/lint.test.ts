@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PACKAGE_ROOT } from '../../src/package-root.js';
+import { connect, createProcess } from '../../src/prc/editing.js';
 import { loadLintConfig, lintTree, validateTree } from '../../src/prc/lint.js';
 import { parseBpmn, serializeBpmn } from '../../src/prc/moddle.js';
 
@@ -130,6 +131,41 @@ describe('the lint core (feat-19 REQ-001/REQ-002, Task 100.120)', () => {
 
       // The backfilled incoming/outgoing references must not leak into
       // the tree: a subsequent export/serialization is byte-identical.
+      expect(await serializeBpmn(tree)).toBe(before);
+    });
+
+    it('reports no findings for a sound in-process-built draft (the $parent backfill, Phase 110)', async () => {
+      // Built in-process (no file parse) with a sound start -> task ->
+      // end wiring and every element named. Before the $parent
+      // backfill, the connectivity rules crashed per element on the
+      // unset back-reference and bpmnlint recorded the TypeError as a
+      // finding -- this leg pins the zero-finding result instead.
+      const created = createProcess('Sound Draft', [
+        { type: 'start-event', name: 'Begin' },
+        { type: 'task', name: 'Work' },
+        { type: 'end-event', name: 'Done' },
+      ]);
+      expect(created.ok).toBe(true);
+      if (!created.ok) {
+        throw new Error('unreachable: the sound draft must build');
+      }
+      const tree = created.tree;
+      const wired = connect(tree, { sourceId: 'startEvent_1', targetId: 'task_1' });
+      expect(wired.ok).toBe(true);
+      const wiredEnd = connect(tree, { sourceId: 'task_1', targetId: 'endEvent_1' });
+      expect(wiredEnd.ok).toBe(true);
+      const before = await serializeBpmn(tree);
+
+      const result = await validateTree(tree);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) {
+        throw new Error('unreachable: validating the sound draft must succeed');
+      }
+      expect(result.findings).toEqual([]);
+      // The backfill's restore leaves the built tree byte-stable too:
+      // neither the incoming/outgoing nor the $parent state leaks into
+      // a subsequent serialization.
       expect(await serializeBpmn(tree)).toBe(before);
     });
 

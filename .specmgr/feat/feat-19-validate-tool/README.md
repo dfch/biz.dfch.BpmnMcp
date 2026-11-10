@@ -125,9 +125,9 @@ in GitHub issue #19.
 
 #### Phase 110: Tool adapter
 
-- [ ] Task 110.100: Register the `validate` tool (zod schema per REQ-004, the tool description - explicit-only framing per QA 1.0060, the result shape, a pointer to the `config` resource for the rule set - and the full structured-error set) on top of the store's re-read; the draft case per REQ-004 (draft-first, `outOfBandReRead: false`, no note).
-- [ ] Task 110.110: Wire the `config` resource to report the configured preset (replace the placeholder).
-- [ ] Task 110.120: Update the handshake test (the six-tool surface); add the spawn e2e legs (ACC-001, ACC-002, ACC-005, the draft leg, the error legs) and the config-drives-findings leg (ACC-004).
+- [x] Task 110.100: Register the `validate` tool (zod schema per REQ-004, the tool description - explicit-only framing per QA 1.0060, the result shape, a pointer to the `config` resource for the rule set - and the full structured-error set) on top of the store's re-read; the draft case per REQ-004 (draft-first, `outOfBandReRead: false`, no note). (the `PrcStore.validateProcess(uuid, lintPackageRoot = PACKAGE_ROOT)` store operation - draft-first, the conditional re-read mirroring `parseProcess`, then the core's `validateTree`; the `UUID_V4` input; the result built from the `VALIDATE_OUTPUT` zod schema (the plan's `status` union); the explicit-only description with the `config`-resource pointer; every failure - store-side and lint-core - a single-line `isError` through `PrcErrorCode` += `LintErrorCode`.)
+- [x] Task 110.110: Wire the `config` resource to report the configured preset (replace the placeholder). (the `bpmnlint` member carries the resolved preset from the same `loadLintConfig` result the `validate` tool lints with - one resolution path, two consumers; `buildEffectiveConfig`/`createServer` take an injectable `lintPackageRoot` (default `PACKAGE_ROOT`, `index.ts` unchanged); the failure shape is the core's `LintError` verbatim, ACC-005.)
+- [x] Task 110.120: Update the handshake test (the six-tool surface); add the spawn e2e legs (ACC-001, ACC-002, ACC-005, the draft leg, the error legs) and the config-drives-findings leg (ACC-004). (six-tool handshake in both suites; unit +1 leg (the built-tree `$parent` backfill pin: a sound seeded draft lints to zero findings, byte-stable); in-memory +13 legs (flawed/clean/empty-draft/seeded-draft/promotion/re-read-note/error legs + the ACC-004/ACC-005 legs against an injected temporary lint root - the committed config never touched); spawn +6 legs (ACC-001, ACC-002, the draft legs, the error legs with server-usability proofs); 304 tests total.)
 
 #### Phase 120: Gates and docs
 
@@ -139,23 +139,144 @@ in GitHub issue #19.
 
 ### Current Status
 
-**As of 2026-11-09**: Phase 100 (spike, config, and core) is
-complete - implementation started, Phases 110 (tool adapter) and 120
-(gates and docs) pending. `bpmnlint` 12.0.0 is committed as a runtime
+**As of 2026-11-09**: Phase 110 (tool adapter) is complete -
+implementation in progress, Phase 120 (gates and docs) pending.
+The `validate` tool is registered on top of the store's new
+`validateProcess` operation (draft-first, the conditional re-read,
+the full structured-error set including the lint core's config
+failures); the `config` resource reports the preset the committed
+`.bpmnlintrc` extends (or the core's structured load failure,
+ACC-005); the handshake is the six-tool surface; the lint core's
+backfill now covers the `$parent` back-reference as well (the
+Phase 110 fix, so seeded drafts and in-session promotions lint
+sound). All seven gates are green (17 test files / 304 tests;
+`npm audit` unchanged from the baseline - only the documented
+residual).
+
+Background: `bpmnlint` 12.0.0 is committed as a runtime
 dependency with the package-relative `.bpmnlintrc` extending
-`bpmnlint:recommended` (next to `logging.json`); the core lint module
-(`src/prc/lint.ts`) loads the config with structured failure,
-validates a parsed tree (with the spike-driven `incoming`/`outgoing`
-backfill, restored after the lint), and normalizes findings to
-`{ rule, elementId?, message }`; the fixture pair is settled
-(`flawed-process.bpmn` authored with five pinned findings; the clean
-reference reuses `order-process.bpmn` per the spike verdict). All
-seven gates are green (17 test files / 284 tests; `npm audit`
-unchanged from the baseline - only the documented residual).
+`bpmnlint:recommended` (next to `logging.json`); the core lint
+module (`src/prc/lint.ts`) loads the config with structured
+failure, validates a parsed or built tree (with the spike-driven
+derived-reference backfill - `incoming`/`outgoing` plus the
+`$parent` back-reference, restored after the lint), and
+normalizes findings to `{ rule, elementId?, message }`; the
+fixture pair is settled (`flawed-process.bpmn` authored with five
+pinned findings; the clean reference reuses `order-process.bpmn`
+per the spike verdict).
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-10T00:50:48.000+01:00 - Phase 110: tool adapter (validate tool, config resource, the $parent backfill fix, tests)
+
+Phase 110 (Tasks 110.100-110.120) landed, all seven quality gates
+green from the repository root (amended 2026-11-10 with the
+`$parent` backfill fix required by the orchestrator's verification):
+
+- **`validate` tool (Task 110.100)**: registered on top of a new
+  store operation `PrcStore.validateProcess(uuid, lintPackageRoot =
+PACKAGE_ROOT)` (the store composes the lint, the adapter stays the
+  1:1 mapper): draft-first (a session draft is linted from its
+  in-memory tree, `outOfBandReRead: false`, no note - the feat-18
+  `parse` convention), then the conditional re-read for registered
+  processes; it mirrors `parseProcess` exactly (the `prc-validate`
+  log event, the `precondition` usage, the `oneLine(uuid)`
+  defense-in-depth comment). The input is the existing `UUID_V4`
+  schema; the result is built from a `ValidateOutput` type inferred
+  from the `VALIDATE_OUTPUT` zod schema (`status` is the plan's
+  `z.union([z.literal('no-findings'), z.number().int().nonnegative()])`,
+  `elementId` omitted when the finding attaches to no element, the
+  `RE_READ_NOTE` spread convention). The description frames
+  validation as explicit-only per QA 1.0060, documents the result
+  shape and the current-state semantics, and points at the `config`
+  resource for the rule set. Every failure the resolution and
+  re-read path can surface (`process-not-registered`, `path-missing`,
+  `not-bpmn`, `read-failed`) plus every lint-core failure
+  (`config-missing`, `config-invalid`, `lint-failed`) is a
+  single-line `isError` result (`PrcErrorCode` now includes
+  `LintErrorCode`; nothing crashes the server). `store.ts` imports
+  `lint.ts` (no cycle: `lint.ts` never imports the store);
+  archunit stays green.
+- **`config` resource (Task 110.110)**: the `bpmnlint` member
+  replaces the `'not yet configured'` placeholder with the preset
+  the committed config actually extends - read from the same
+  `loadLintConfig` result the `validate` tool lints with (one
+  resolution path, two consumers; `buildEffectiveConfig` and
+  `createServer` take an injectable `lintPackageRoot`, default
+  `PACKAGE_ROOT`, so `index.ts` is unchanged and the production
+  behavior is byte-identical). Shape: on success `{ preset: string }`
+  (the resolved `extends` - a string, the comma-joined array, or the
+  `none` sentinel when the config extends no preset); on a missing
+  or invalid config (ACC-005) the core's structured failure
+  verbatim: `{ error: { code, message } }` (the core's
+  `LintError` - the same code and message the `validate` tool
+  reports).
+- **The `$parent` backfill fix (orchestrator-verified defect,
+  fixed in Phase 110)**: bpmnlint's connectivity rules
+  (`no-disconnected`, `no-implicit-start`, `no-implicit-end`) read
+  `node.$parent` unguarded; parsed trees carry the back-reference,
+  but in-process-built trees (session drafts, and drafts promoted
+  within the same session - promotion caches the built tree without
+  a re-parse) never set it, so a sound seeded draft reported three
+  crash-derived findings (the TypeError recorded as a finding). The
+  lint core's backfill (now `backfillDerivedReferences`, the
+  function formerly `backfillFlowReferences`) sets `child.$parent =
+parent` first-write-wins in the same root-order walk that
+  backfills `incoming`/`outgoing` (`walkElements` in `moddle.ts`
+  gained an optional per-edge callback - the existing inventories
+  are unchanged) and restores it exactly in the same `finally`
+  (delete when it was not an own property, reset to `undefined`
+  when it was): the caller's tree stays byte-stable on built trees
+  as well (a re-export right after a validation does not flip
+  `outOfBandReRead` - verified end-to-end). Parsed trees are
+  untouched (first-write-wins). The flawed fixture's five pinned
+  findings and the clean reference's zero findings are unchanged.
+- **Tests (Task 110.120)**: 20 new legs (304 total, up from 284).
+  Unit (`test/prc/lint.test.ts`, +1): a sound in-process-built
+  draft (start -> task -> end, all named) validates to zero
+  findings and its serialization stays byte-identical (this leg
+  fails with a crash-derived finding before the fix - the pin).
+  In-memory (`test/mcp-server.test.ts`, +13): the handshake
+  asserts the six-tool surface; the config resource pins
+  `bpmnlint: { preset: 'bpmnlint:recommended' }`; the validate
+  block pins the five flawed-fixture findings with `status: 5`
+  (ACC-001), `no-findings` for the clean reference (ACC-002), the
+  empty-draft leg (an empty `create`d draft lints to the two
+  required-event findings on the process id, `outOfBandReRead:
+false`, no note, no file), the SEEDED-draft leg (named elements +
+  connects -> `no-findings` from the in-memory tree), the
+  PROMOTION leg (seeded draft -> export -> validate in the same
+  session -> `no-findings`, pinning the built-tree cache path), an
+  out-of-band re-read note leg, and the error legs (unknown uuid,
+  deleted own file, corrupted own file, the uuid-shape zod
+  rejection); the ACC-004/ACC-005 legs run against a temporary
+  lint root injected through `createServer` (the committed
+  `.bpmnlintrc` is never touched): a `rules` override
+  (`no-disconnected: 'off'`) drops the corresponding finding (5 -> 4) while the resource still reports the extended preset, and a
+  missing or malformed config is the same structured failure in
+  both the resource and the `validate` result (identical code and
+  message). Spawn (`test/mcp-server.spawn.test.ts`, +6): the
+  six-tool handshake over real stdio, ACC-001 (the five pinned
+  findings, `status: 5`), ACC-002 (clean reference `no-findings` +
+  the resource's preset over stdio), the empty-draft leg
+  (in-memory tree, no note, no prc file), the SEEDED-draft leg
+  (over stdio, `no-findings`), and the error legs (unknown uuid,
+  corrupted own file - each followed by a successful call proving
+  the server and the registration stay usable).
+- **Gate evidence** (final run, after the `$parent` fix): `npm ci`
+  (exit 0, fresh install from the lockfile); `npm run lint` (exit
+  0, clean); `npm run format:check` (exit 0, all matched files
+  OK); `npm run build` (exit 0, type-check + emit, `dist/` rebuilt
+  for the spawn tests); `npm test -- --coverage` (exit 0, 17 test
+  files / 304 tests passed; coverage report-only per QA 0.0260:
+  94.8% statements, 88.47% branches, 99.38% functions, 94.83%
+  lines); `npm audit` (only the documented residual - minimatch
+  7.0.0-11.0.0 GHSA-g3hv-75wg-m249 moderate via archunit, listed
+  twice, identical to the Phase 100 baseline); `uvx pre-commit run
+--all-files` (all seven hooks passed: check yaml, fix end of
+  files, trim trailing whitespace, ESLint, Prettier, tsc, vitest).
 
 #### 2026-11-09T21:10:30.000+01:00 - Phase 100: spike, config, and core
 
@@ -314,6 +435,56 @@ and QA pairs 7.0020/1.0060.
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-10T00:50:48.000+01:00 - Phase 110: store-side lint composition, the injectable lint root, the config failure shape, and the extended derived-reference backfill ($parent)
+
+Decided in Phase 110: (1) the lint is composed in the STORE -- a
+new `PrcStore.validateProcess(uuid, lintPackageRoot = PACKAGE_ROOT)`
+runs the draft-first tree resolution + the conditional re-read
+(mirroring `parseProcess` exactly) and then the core's
+`validateTree`; the adapter maps the result 1:1 and never touches
+the linter or the tree (store -> lint -> moddle; no cycle,
+archunit green). `PrcErrorCode` gains the lint core's
+`LintErrorCode` so every failure -- store-side and lint-side --
+flows through the same `PrcError` shape and the existing
+`toolError` mapping; (2) testability of ACC-004/ACC-005 via an
+INJECTABLE LINT PACKAGE ROOT -- `createServer` (and
+`buildEffectiveConfig`) take an optional `lintPackageRoot`
+(default `PACKAGE_ROOT`), so the in-memory tests point the config
+load at a temporary directory (a rewritten / absent / malformed
+`.bpmnlintrc`) without ever touching the committed file;
+`index.ts` passes the default and the production behavior is
+byte-identical -- the ACC-004/ACC-005 legs are therefore tested
+in-memory, and no spawn-level config mutation is needed; (3) the
+`config` resource's `bpmnlint` member shape: `{ preset: string }`
+on success (the resolved `extends` -- a string, the comma-joined
+array, or the `none` sentinel following the otel member's
+`disabled` convention) and `{ error: { code, message } }` on a
+load failure (the core's `LintError` verbatim -- the same code and
+message the `validate` tool reports, ACC-005); (4) the backfill was
+EXTENDED IN PHASE 110 to set/restore the moddle `$parent`
+back-reference as well (the function is now
+`backfillDerivedReferences`): the same root-order walk that
+backfills `incoming`/`outgoing` sets `child.$parent = parent`
+first-write-wins (only when currently undefined -- parsed trees
+already carry it, so they are untouched; the root keeps `$parent`
+undefined) and restores it exactly in the same `finally` (delete
+when it was not an own property, reset to `undefined` when it was),
+keeping every caller's tree byte-stable. Rationale: the draft-first
+decision (G1) plus export/promotion caching the in-memory BUILT
+tree (no re-parse) make seeded drafts a first-class `validate`
+target, and without the pass bpmnlint's connectivity rules
+(`no-disconnected`, `no-implicit-start`, `no-implicit-end`) crash
+per element on the unset `$parent` (`is(node.$parent,
+'bpmn:AdHocSubProcess')`) -- bpmnlint records each TypeError as a
+finding, so a sound seeded draft reported three crash-derived
+findings, violating the finding-normalization contract (verified
+against the built dist by the orchestrator; pinned by the new unit
+leg, the in-memory seeded-draft and promotion legs, and the spawn
+seeded-draft leg). The draft legs pin: the EMPTY `create`d process
+(exactly two findings: `end-event-required` + `start-event-required`
+on the process id), the sound SEEDED draft (zero findings), and the
+PROMOTED seeded draft (zero findings, same session).
 
 #### 2026-11-09T21:10:30.000+01:00 - Phase 100: the pinned bpmnlint version, the derived-attribute backfill, and the clean-reference verdict
 

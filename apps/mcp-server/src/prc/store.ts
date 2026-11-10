@@ -6,6 +6,7 @@ import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promis
 import type { Stats } from 'node:fs';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { postcondition, precondition } from '../assertions.js';
+import { PACKAGE_ROOT } from '../package-root.js';
 import {
   addElement,
   connect,
@@ -19,6 +20,7 @@ import {
   type EditingSuccess,
 } from './editing.js';
 import { buildPrcFilename, deriveSlug, generateUuid, parsePrcFilename } from './filename.js';
+import { validateTree, type LintErrorCode, type LintFinding } from './lint.js';
 import {
   BpmnParseError,
   collectAddressableInventory,
@@ -68,20 +70,34 @@ import {
  * registered process is served after the conditional re-read,
  * carrying the addressable inventory of the current tree (the
  * flow-model elements with their names, the sequence and message
- * flows with their resolved references).
+ * flows with their resolved references). `validate` (feat-19)
+ * serves the current tree to the lint core the same way (draft
+ * first, then the conditional re-read) and reports the normalized
+ * findings; the store never touches the linter's raw API -- the
+ * lint core (`lint.ts`) owns bpmnlint the way `moddle.ts` owns
+ * bpmn-moddle, and its derived-reference backfill (`incoming`/
+ * `outgoing`, `$parent`) restores the tree, so the cached tree
+ * stays byte-stable across a validation.
  *
  * The operations return plain typed result objects (no MCP SDK
  * types -- the adapter layer maps them to tool results).
  * Expected failures (a missing source, a directory source,
  * unparseable XML, an unregistered UUID, a failed read/write, a
- * malformed editing input) are structured `ok: false` results;
+ * malformed editing input, a missing or invalid lint config) are
+ * structured `ok: false` results;
  * violated `precondition`/`postcondition` invariants (REQ-009) throw
  * and are never swallowed -- a crashed invariant is a bug, not a
  * tool error.
  */
 
-/** The structured failure codes the store operations can return. */
-export type PrcErrorCode = StoreErrorCode | EditingErrorCode;
+/**
+ * The structured failure codes the store operations can return.
+ * The `validate` operation (feat-19) additionally surfaces the
+ * lint core's codes (`LintErrorCode`: a missing or invalid
+ * `.bpmnlintrc`, an unresolvable preset or rule) through the same
+ * `PrcError` shape.
+ */
+export type PrcErrorCode = StoreErrorCode | EditingErrorCode | LintErrorCode;
 
 /** The file/import/export-side failure codes (the editing codes are `EditingErrorCode`). */
 type StoreErrorCode =
@@ -212,6 +228,31 @@ export interface ParseFailure {
 }
 
 export type ParseResult = ParseSuccess | ParseFailure;
+
+/** The `validate` success result (feat-19 REQ-004). */
+export interface ValidateSuccess {
+  ok: true;
+  /** The process UUID. */
+  uuid: string;
+  /** The normalized findings of the current tree (by rule, then element id). */
+  findings: LintFinding[];
+  /** Whether the conditional re-read detected an out-of-band change (REQ-004; false for drafts). */
+  outOfBandReRead: boolean;
+}
+
+/**
+ * The `validate` failure result: a store failure (an unregistered
+ * UUID, a missing or unparseable own file, a filesystem failure) or
+ * a lint-core failure (`config-missing`, `config-invalid`,
+ * `lint-failed` -- feat-19 ACC-005), both through the same
+ * `PrcError` shape.
+ */
+export interface ValidateFailure {
+  ok: false;
+  error: PrcError;
+}
+
+export type ValidateResult = ValidateSuccess | ValidateFailure;
 
 /**
  * The minimal structural logger the store needs. A pino `Logger`
@@ -681,6 +722,81 @@ export class PrcStore {
       'parsed a registered BPMN process',
     );
     return { ok: true, uuid, inventory: collectAddressableInventory(current.tree), outOfBandReRead: reRead };
+  }
+
+  /**
+   * The `validate` operation (feat-19 REQ-004): serves the
+   * process's current tree to the lint core and reports the
+   * normalized findings. Read-only: nothing is written, and the only
+   * possible cache effect is the conditional re-read's own update
+   * (the lint core's derived-attribute backfill restores the tree,
+   * so a validation leaves the cached tree byte-stable -- an
+   * `export` right after a `validate` must not re-read out of
+   * band). Resolves the UUID DRAFT-FIRST: a session draft is linted
+   * from its in-memory tree (no file access, no checksum -- there is
+   * nothing to hash; `outOfBandReRead` is false); a registered
+   * process is linted after the conditional re-read. An unregistered
+   * UUID is a structured error in every directory state; a re-read
+   * that no longer parses is `not-bpmn`; a filesystem failure is
+   * `read-failed` (the cache stays untouched, as in the siblings); a
+   * missing or invalid `.bpmnlintrc`, or an unresolvable preset or
+   * rule, is the lint core's structured failure (ACC-005).
+   *
+   * @param uuid - The process UUID (a draft or a registered process).
+   * @param lintPackageRoot - Where the committed `.bpmnlintrc`
+   *   resolves (defaults to this package's own root; injectable for
+   *   the tests -- the `config` resource reads the same root, one
+   *   resolution path, two consumers).
+   */
+  async validateProcess(uuid: string, lintPackageRoot: string = PACKAGE_ROOT): Promise<ValidateResult> {
+    precondition(uuid.length > 0, 'the process uuid must be a non-empty string');
+    const draft = this.drafts.get(uuid);
+    if (draft !== undefined) {
+      const linted = await validateTree(draft.tree, lintPackageRoot);
+      if (!linted.ok) {
+        return { ok: false, error: linted.error };
+      }
+      this.logger.info(
+        { event: 'prc-validate', uuid, outOfBandReRead: false },
+        'validated a session-draft BPMN process (in memory only)',
+      );
+      return { ok: true, uuid, findings: linted.findings, outOfBandReRead: false };
+    }
+
+    const entry = this.cache.get(uuid);
+    if (entry === undefined) {
+      // The uuid is user input: single-line it before interpolation
+      // (feat-19 Task 110.100, defense-in-depth: safe today only
+      // because the adapter enforces the v4-shape constraint).
+      return {
+        ok: false,
+        error: { code: 'process-not-registered', message: `process ${oneLine(uuid)} is not registered` },
+      };
+    }
+
+    let reRead: boolean;
+    let current: CacheEntry | undefined;
+    try {
+      reRead = (await this.ensureCurrentTree(uuid, entry.path)).reRead;
+      current = this.cache.get(uuid);
+      precondition(current !== undefined, `process ${uuid} must stay registered during validate`);
+    } catch (error) {
+      if (error instanceof BpmnParseError) {
+        return { ok: false, error: { code: 'not-bpmn', message: error.message } };
+      }
+      return { ok: false, error: this.toIoError(error, 'read-failed', entry.path) };
+    }
+
+    const linted = await validateTree(current.tree, lintPackageRoot);
+    if (!linted.ok) {
+      return { ok: false, error: linted.error };
+    }
+
+    this.logger.info(
+      { event: 'prc-validate', uuid, path: current.path, outOfBandReRead: reRead },
+      'validated a registered BPMN process',
+    );
+    return { ok: true, uuid, findings: linted.findings, outOfBandReRead: reRead };
   }
 
   /** Dispatches an editing operation onto a tree (the change op's core leg). */

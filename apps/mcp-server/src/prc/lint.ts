@@ -135,11 +135,13 @@ export function loadLintConfig(packageRoot: string = PACKAGE_ROOT): LintConfigRe
  * (feat-19 Task 100.120): a fresh `Linter` with the node resolver
  * lints the tree and the reports normalize to the finding shape.
  *
- * Before linting, the derived BPMN 2.0 attributes `incoming`/
- * `outgoing` are backfilled from every sequence flow's resolved
- * `sourceRef`/`targetRef`, and the original property state is
- * restored in a `finally` -- see `backfillFlowReferences` for the
- * reason (the connectivity rules misfire on a plain parse) and the
+ * Before linting, the derived references the rules read are
+ * backfilled -- the BPMN 2.0 attributes `incoming`/`outgoing` from
+ * every sequence flow's resolved `sourceRef`/`targetRef`, and the
+ * `$parent` back-reference on in-process-built trees (Phase 110) --
+ * and the original property state is restored in a `finally`; see
+ * `backfillDerivedReferences` for the reasons (the connectivity
+ * rules misfire on a plain parse and crash on built trees) and the
  * byte-stability guarantee for the caller's tree.
  *
  * An unresolvable config (an unknown `extends` preset or rule) is a
@@ -147,12 +149,12 @@ export function loadLintConfig(packageRoot: string = PACKAGE_ROOT): LintConfigRe
  * from `lint` rather than rejecting, so the call is guarded with
  * `try`/`catch`.
  *
- * @param rootElement - The parsed document root to validate.
+ * @param rootElement - The document root to validate.
  * @param config - The loaded `.bpmnlintrc` content.
  */
 export async function lintTree(rootElement: BpmnRootElement, config: LintConfig): Promise<LintResult> {
   const linter = new Linter({ resolver: new NodeResolver() });
-  const restore = backfillFlowReferences(rootElement);
+  const restore = backfillDerivedReferences(rootElement);
   try {
     const results = await linter.lint(rootElement, config);
     return { ok: true, findings: normalizeFindings(results) };
@@ -202,42 +204,78 @@ interface OriginalFlowRefs {
 }
 
 /**
- * Backfills the derived BPMN 2.0 attributes `incoming`/`outgoing` on
- * every flow node from the resolved `sourceRef`/`targetRef` of the
- * tree's sequence flows, and returns a function that restores the
- * original property state (feat-19 Task 100.100 spike finding).
+ * Backfills the derived references the linter's rules read, and
+ * returns a function that restores the original property state
+ * (feat-19 Task 100.100 spike finding, extended in Phase 110 for
+ * the `$parent` back-reference):
  *
- * BPMN 2.0 declares `incoming`/`outgoing` on `tFlowNode` as derived
- * values computed from the sequence flows; the XSD carries them as
- * optional child elements, but the diagrams this server reads and
- * writes omit them, and the bpmn-moddle parse therefore leaves the
- * properties unset. The connectivity rules of `bpmnlint:recommended`
- * (`no-disconnected`, `no-implicit-start`, `no-implicit-end`) read
- * them directly -- without the backfill, every connected diagram
- * reports spurious findings (the spike linted the clean fixture with
- * seven false errors on a plain parse, and zero on the backfilled
- * parse). bpmnlint's own rule-test fixtures work around the gap by
- * writing the derived elements into the XML explicitly.
+ * (1) The derived BPMN 2.0 attributes `incoming`/`outgoing` on
+ * every flow node, from the resolved `sourceRef`/`targetRef` of the
+ * tree's sequence flows. BPMN 2.0 declares them as derived values
+ * computed from the sequence flows; the XSD carries them as optional
+ * child elements, but the diagrams this server reads and writes
+ * omit them, and the bpmn-moddle parse therefore leaves the
+ * properties unset. The connectivity rules of
+ * `bpmnlint:recommended` (`no-disconnected`, `no-implicit-start`,
+ * `no-implicit-end`) read them directly -- without the backfill,
+ * every connected diagram reports spurious findings (the spike
+ * linted the clean fixture with seven false errors on a plain
+ * parse, and zero on the backfilled parse). bpmnlint's own
+ * rule-test fixtures work around the gap by writing the derived
+ * elements into the XML explicitly.
+ *
+ * (2) The moddle `$parent` back-reference on every child element
+ * (first-write-wins, in walk order from the root; the root itself
+ * keeps `$parent` undefined). Parsed trees carry it (the parser
+ * sets it on every flow node, flow, and DI element), but
+ * in-process-built trees (the editing module's `createBpmnElement`
+ * + array pushes -- session drafts, and drafts promoted within the
+ * same session, whose built tree the store caches without a
+ * re-parse) never set it. The same three connectivity rules read
+ * `node.$parent` unguarded (`is(node.$parent, 'bpmn:AdHocSubProcess')`);
+ * without this pass they crash per element on built trees, and
+ * bpmnlint records each TypeError as a finding (Phase 110
+ * verification: a sound seeded draft reported three crash-derived
+ * findings).
  *
  * The backfill is temporary by design: the caller's tree -- in
  * particular the store's cached tree, whose serialization must stay
  * byte-stable across a validation (an `export` right after a
- * `validate` must not re-read out of band) -- is restored exactly.
- * The restore runs in the caller's `finally`; the lint itself is a
- * microtask-only chain (no I/O), so the backfilled state is never
- * observed by any concurrent operation.
+ * `validate` must not re-read out of band) -- is restored exactly:
+ * `incoming`/`outgoing` reset to the recorded original value (or
+ * deleted when it was absent), `$parent` deleted when it was not an
+ * own property, reset to `undefined` when it was. The restore runs
+ * in the caller's `finally`; the lint itself is a microtask-only
+ * chain (no I/O), so the backfilled state is never observed by any
+ * concurrent operation.
  *
- * @param rootElement - The parsed document root to prepare.
+ * @param rootElement - The document root to prepare.
  * @returns The restore function (idempotent, side-effect free once
  *   the backfilled state is gone).
  */
-function backfillFlowReferences(rootElement: BpmnRootElement): () => void {
+function backfillDerivedReferences(rootElement: BpmnRootElement): () => void {
   const sequenceFlows: ModdleElement[] = [];
-  walkElements(rootElement, (element) => {
-    if (element.$type === 'bpmn:SequenceFlow') {
-      sequenceFlows.push(element);
-    }
-  });
+  // child -> whether `$parent` was an own property before the set
+  // (the restore deletes it when it was absent, resets it when present).
+  const parentSet = new Map<ModdleElement, boolean>();
+  walkElements(
+    rootElement,
+    (element) => {
+      if (element.$type === 'bpmn:SequenceFlow') {
+        sequenceFlows.push(element);
+      }
+    },
+    (parent, child) => {
+      // First-write-wins: the earliest-visited parent (walk order
+      // from the root) matches the parser's container semantics; a
+      // child that already carries `$parent` is never touched.
+      if (child.$parent !== undefined) {
+        return;
+      }
+      parentSet.set(child, '$parent' in child);
+      child.$parent = parent;
+    },
+  );
 
   const original = new Map<ModdleElement, OriginalFlowRefs>();
   const record = (node: ModdleElement, property: 'incoming' | 'outgoing'): void => {
@@ -278,6 +316,13 @@ function backfillFlowReferences(rootElement: BpmnRootElement): () => void {
         } else {
           node[property] = state[property];
         }
+      }
+    }
+    for (const [child, hadOwnProperty] of parentSet) {
+      if (hadOwnProperty) {
+        child.$parent = undefined;
+      } else {
+        delete child.$parent;
       }
     }
   };

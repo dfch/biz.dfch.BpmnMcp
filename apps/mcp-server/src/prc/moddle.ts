@@ -246,17 +246,25 @@ function recordRef(element: ModdleElement, refs: BpmnElementRef[]): void {
 
 /**
  * The metamodel-driven walk the inventories (and the lint core's
- * flow-reference backfill, feat-19) share: visits the start element
- * and every element reachable from it through child references,
- * invoking `record` on each visited element exactly once -- the
- * visited set makes the walk cycle-safe (a resolved reference back
- * to an already-visited element is a no-op).
+ * derived-reference backfill, feat-19) share: visits the start
+ * element and every element reachable from it through child
+ * references, invoking `record` on each visited element exactly once
+ * -- the visited set makes the walk cycle-safe (a resolved reference
+ * back to an already-visited element is a no-op).
  *
  * @param start - The element the walk starts at (visited first).
  * @param record - The per-element recording callback (mutates its
  *   own inventory).
+ * @param onEdge - Optional per-edge callback (feat-19, the `$parent`
+ *   back-reference pass): invoked for every traversed parent-to-child
+ *   edge, in walk order from the root, including edges to children
+ *   already visited (cycle-safe consumers make the repeat a no-op).
  */
-export function walkElements(start: ModdleElement, record: (element: ModdleElement) => void): void {
+export function walkElements(
+  start: ModdleElement,
+  record: (element: ModdleElement) => void,
+  onEdge?: (parent: ModdleElement, child: ModdleElement) => void,
+): void {
   const seen = new Set<object>();
 
   const visit = (element: ModdleElement): void => {
@@ -266,6 +274,9 @@ export function walkElements(start: ModdleElement, record: (element: ModdleEleme
     seen.add(element);
     record(element);
     for (const child of childReferences(element)) {
+      if (onEdge !== undefined) {
+        onEdge(element, child);
+      }
       visit(child);
     }
   };
