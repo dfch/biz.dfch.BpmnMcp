@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-07T08:58:41.011+01:00'
 id: feat-19-validate-tool
-status: planning
+status: review
 type: feat
-updated: '2026-11-09T18:24:00.390+01:00'
+updated: '2026-11-10T03:02:52.332+01:00'
 version: 1.0.0
 ---
 
