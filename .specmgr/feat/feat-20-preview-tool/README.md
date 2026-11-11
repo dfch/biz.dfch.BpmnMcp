@@ -100,9 +100,9 @@ process view. Anchored in GitHub issue #20.
 
 #### Phase 100: Preview server and page
 
-- [ ] Task 100.100: Add the `bpmn-js` runtime dependency and the preview server module: 127.0.0.1 bind on the fixed port (test-injectable), the `/processes/<uuid>` XML endpoint on the store's re-read, the view page endpoint, static asset serving, 404s, the in-use-port structured error, and stdout discipline.
-- [ ] Task 100.110: Author the preview page (single static asset, read-only Viewer, watermark intact) and the lifecycle (lazy start, idempotent ensure, clean shutdown).
-- [ ] Task 100.120: HTTP-level tests on an ephemeral port (page markers, XML + re-read, 404 legs, in-use-port error) and the stdout-cleanliness leg with the server up.
+- [x] Task 100.100: Add the `bpmn-js` runtime dependency and the preview server module: 127.0.0.1 bind on the fixed port (test-injectable), the `/processes/<uuid>` XML endpoint on the store's re-read, the view page endpoint, static asset serving, 404s, the in-use-port structured error, and stdout discipline.
+- [x] Task 100.110: Author the preview page (single static asset, read-only Viewer, watermark intact) and the lifecycle (lazy start, idempotent ensure, clean shutdown).
+- [x] Task 100.120: HTTP-level tests on an ephemeral port (page markers, XML + re-read, 404 legs, in-use-port error) and the stdout-cleanliness leg with the server up.
 
 #### Phase 110: Opener and tool
 
@@ -119,12 +119,49 @@ process view. Anchored in GitHub issue #20.
 
 ### Current Status
 
-**As of 2026-11-07**: Planned; the Viewer-asset decision is recorded
-(served from the installed package); no open decisions remain.
+**As of 2026-11-11**: Phase 100 (Preview server and page) is
+implemented and gate-green: the `src/preview/` server module (the
+loopback bind on the fixed, test-injectable port 8080, the
+`/processes/<uuid>` XML endpoint over the store's new
+`readProcessXml`, the `/view/<uuid>` page endpoint, the
+`/bpmn-js/<file>` asset route over the installed `bpmn-js` dist, the
+structured `port-in-use` start error, and the stdout discipline via
+the injected logger), the single static preview page (the read-only
+Viewer, the pinned bundle/CSS, the watermark intact), the unref plus
+explicit-close lifecycle (plan fix E1), and the HTTP-level plus
+child-process test legs (20 tests). Phases 110 (opener and tool) and
+120 (gates and docs) remain.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-11T11:07:00.000Z - Phase 100 implemented (Preview server and page)
+
+Tasks 100.100/100.110/100.120 done. New: `bpmn-js` (18.31.1) as a
+runtime dependency; `src/preview/preview-server.ts` (the
+zero-dependency `node:http` server: the `127.0.0.1` bind on the
+fixed, test-injectable port, the `/processes/<uuid>` XML endpoint on
+the store's conditional re-read, the `/view/<uuid>` page endpoint,
+the `/bpmn-js/<file>` asset route, the 404/400/405 legs, the
+structured `port-in-use` start error, and the stdout discipline via
+the injected logger) and `src/preview/preview-page.ts` (the single
+static asset: the read-only Viewer, the pinned bundle/CSS over the
+fixed asset prefix, the watermark unmodified). The store gained the
+read-only `readProcessXml` (draft-first, then the conditional
+re-read) as the endpoint's data source. Lifecycle: lazy idempotent
+`ensureServer()`, the listener `unref()`ed at start (E1a), and the
+explicit `closeServer()` shutdown path with its Phase 110 wiring
+point documented (E1b); a child-process test leg proves zero stdout
+bytes with the server up, the natural process exit free of the
+listener, and the close-released port (E1c). Plan fix G3: the
+installed `bpmn-js` ships no `exports` map, so the asset resolution
+uses Node's own resolver (`createRequire` on
+`bpmn-js/package.json`, with a main-entry walk-up fallback for a
+future restrictive map); the pinned assets are
+`bpmn-viewer.production.min.js`, `assets/diagram-js.css`, and
+`assets/bpmn-js.css`. Gate chain green: `npm run build`,
+`npm run lint`, `npm run format:check`, `npm test` (338 tests).
 
 #### 2026-11-07T09:02:00.000Z - Created
 
@@ -134,6 +171,25 @@ QA pairs 4.0010/4.0020/6.0010.
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-11T11:07:00.000Z - Phase 100 design decisions
+
+Settled in implementation (under plan fixes E1/G3): (1) the preview
+page is embedded as a TypeScript string constant
+(`src/preview/preview-page.ts`) rather than a separate `.html` file
+-- `tsc` does not copy non-TS assets into `dist/`, and embedding
+keeps the page a true single asset with no path resolution from
+either the source or the compiled layout; (2) the asset URL scheme
+is the fixed prefix `/bpmn-js/<file>`, mirroring the installed
+package's `dist` layout 1:1, so any relative reference inside a
+served CSS resolves to the mirrored file; (3) the clean shutdown
+combines E1a and E1b: the listener is `unref()`ed at start (it never
+keeps the process alive on its own) plus the explicit, idempotent
+`closeServer()` (port release, keep-alive teardown), with the Phase
+110 wiring point documented in its doc comment; (4) the XML
+endpoint reads through the store's new read-only `readProcessXml`
+(draft-first, then the conditional re-read), keeping the store the
+sole filesystem owner (CONSTITUTION §4).
 
 #### 2026-11-07T09:45:00.000Z - Viewer assets: served from the installed package
 
