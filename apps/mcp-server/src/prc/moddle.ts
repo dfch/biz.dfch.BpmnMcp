@@ -7,9 +7,10 @@ import type { ModdleElement } from 'moddle';
 /**
  * The bpmn-moddle wrappers (REQ-001, REQ-006): a process-wide
  * `BpmnModdle` singleton, parsing with structured error wrapping,
- * serialization with `format: true`, and the tree helpers the store
- * and the tests share (the document's process `id`, the element
- * inventory, the addressable inventory). This module owns every
+ * serialization with `format: true`, and the tree helpers the store,
+ * the lint core, and the tests share (the document's process `id`,
+ * the element inventory, the addressable inventory, the
+ * metamodel-driven element walk). This module owns every
  * `bpmn-moddle` touch point, so the rest of the core never sees the
  * library's raw API.
  */
@@ -244,17 +245,26 @@ function recordRef(element: ModdleElement, refs: BpmnElementRef[]): void {
 }
 
 /**
- * The metamodel-driven walk the inventories share: visits the start
+ * The metamodel-driven walk the inventories (and the lint core's
+ * derived-reference backfill, feat-19) share: visits the start
  * element and every element reachable from it through child
- * references, invoking `record` on each visited element exactly
- * once -- the visited set makes the walk cycle-safe (a resolved
- * reference back to an already-visited element is a no-op).
+ * references, invoking `record` on each visited element exactly once
+ * -- the visited set makes the walk cycle-safe (a resolved reference
+ * back to an already-visited element is a no-op).
  *
  * @param start - The element the walk starts at (visited first).
  * @param record - The per-element recording callback (mutates its
  *   own inventory).
+ * @param onEdge - Optional per-edge callback (feat-19, the `$parent`
+ *   back-reference pass): invoked for every traversed parent-to-child
+ *   edge, in walk order from the root, including edges to children
+ *   already visited (cycle-safe consumers make the repeat a no-op).
  */
-function walkElements(start: ModdleElement, record: (element: ModdleElement) => void): void {
+export function walkElements(
+  start: ModdleElement,
+  record: (element: ModdleElement) => void,
+  onEdge?: (parent: ModdleElement, child: ModdleElement) => void,
+): void {
   const seen = new Set<object>();
 
   const visit = (element: ModdleElement): void => {
@@ -264,6 +274,9 @@ function walkElements(start: ModdleElement, record: (element: ModdleElement) => 
     seen.add(element);
     record(element);
     for (const child of childReferences(element)) {
+      if (onEdge !== undefined) {
+        onEdge(element, child);
+      }
       visit(child);
     }
   };

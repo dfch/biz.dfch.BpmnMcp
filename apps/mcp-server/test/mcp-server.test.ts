@@ -36,8 +36,23 @@ import { createServer } from '../src/server.js';
 const FIXTURES_DIR = resolve(fileURLToPath(new URL('./fixtures/', import.meta.url)));
 const ORDER_FIXTURE = join(FIXTURES_DIR, 'order-process.bpmn');
 const MALFORMED_FIXTURE = join(FIXTURES_DIR, 'malformed.bpmn');
+const FLAWED_FIXTURE = join(FIXTURES_DIR, 'flawed-process.bpmn');
 
 const UUID_V4_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/**
+ * The pinned findings of the flawed fixture under the committed
+ * config (feat-19 Task 100.100 spike; the same set the lint core
+ * pins in `test/prc/lint.test.ts`): deterministic order, by rule,
+ * then element id.
+ */
+const FLAWED_EXPECTED = [
+  { rule: 'end-event-required', elementId: 'flawed-process', message: 'Process is missing end event' },
+  { rule: 'no-disconnected', elementId: 'orphan-task', message: 'Element is not connected' },
+  { rule: 'no-implicit-end', elementId: 'orphan-task', message: 'Element is an implicit end' },
+  { rule: 'no-implicit-end', elementId: 'review', message: 'Element is an implicit end' },
+  { rule: 'no-implicit-start', elementId: 'orphan-task', message: 'Element is an implicit start' },
+];
 
 /** The `import` tool result's success JSON (REQ-005). */
 interface ImportSuccessPayload {
@@ -83,6 +98,21 @@ interface ParseSuccessPayload {
   flows: { id: string; kind: string; source?: string; target?: string; conditionExpression?: string }[];
   outOfBandReRead: boolean;
   note?: string;
+}
+
+/** The `validate` tool result's success JSON (feat-19 REQ-004). */
+interface ValidateSuccessPayload {
+  uuid: string;
+  status: string | number;
+  findings: { rule: string; elementId?: string; message: string }[];
+  outOfBandReRead: boolean;
+  note?: string;
+}
+
+/** The `config` resource's `bpmnlint` member (feat-19 REQ-005, ACC-005). */
+interface BpmnlintResourceJson {
+  preset?: string;
+  error?: { code: string; message: string };
 }
 
 interface LogRecord {
@@ -152,6 +182,24 @@ async function parseSuccess(client: Client, uuid: string): Promise<ParseSuccessP
   const outcome = await callTool(client, 'parse', { uuid });
   expect(outcome.isError).toBe(false);
   return JSON.parse(outcome.text) as ParseSuccessPayload;
+}
+
+/** Calls `validate` and narrows the success JSON (the test expects success). */
+async function validateSuccess(client: Client, uuid: string): Promise<ValidateSuccessPayload> {
+  const outcome = await callTool(client, 'validate', { uuid });
+  expect(outcome.isError).toBe(false);
+  return JSON.parse(outcome.text) as ValidateSuccessPayload;
+}
+
+/** Reads the `config` resource's `bpmnlint` member (feat-19 REQ-005, ACC-005). */
+async function readBpmnlintConfigMember(client: Client): Promise<BpmnlintResourceJson> {
+  const { contents } = await client.readResource({ uri: 'bpmnmcp://config' });
+  const [content] = contents;
+  if (!('text' in content)) {
+    throw new Error('expected a text resource content');
+  }
+  const parsed = JSON.parse(content.text) as { bpmnlint: BpmnlintResourceJson };
+  return parsed.bpmnlint;
 }
 
 describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
@@ -247,17 +295,27 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
         paths: {
           docsPrcDir: join(tempDir, 'docs', 'prc'),
         },
+        // The resolved preset of the committed .bpmnlintrc (feat-19
+        // REQ-005/ACC-002), not a placeholder.
         bpmnlint: {
-          preset: 'not yet configured',
+          preset: 'bpmnlint:recommended',
         },
       });
     });
   });
 
-  it('lists exactly the five tools: change, create, export, import, parse (feat-18 ACC-004)', async () => {
-    // The handshake lists create, change, and parse in addition to the existing tools.
+  it('lists exactly the six tools: change, create, export, import, parse, validate (feat-19 ACC-003)', async () => {
+    // The handshake lists create, change, parse, and validate in
+    // addition to the existing tools.
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name).sort()).toEqual(['change', 'create', 'export', 'import', 'parse']);
+    expect(tools.map((tool) => tool.name).sort()).toEqual([
+      'change',
+      'create',
+      'export',
+      'import',
+      'parse',
+      'validate',
+    ]);
   });
 
   describe('the import tool (REQ-005, REQ-007, ACC-002/ACC-003/ACC-004)', () => {
@@ -766,6 +824,308 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
       expect(wrongShape.text).toMatch(/at uuid/);
 
       expect(existsSync(resolveDocsPrcDir())).toBe(false);
+    });
+  });
+
+  describe('the validate tool (feat-19 REQ-004, ACC-001/ACC-002, adapter leg)', () => {
+    it('validates the imported flawed fixture: the five pinned findings, status the count (ACC-001)', async () => {
+      const source = copyFixture(FLAWED_FIXTURE, 'flawed.bpmn');
+      const imported = await importSuccess(client, source);
+
+      const validated = await validateSuccess(client, imported.uuid);
+
+      expect(validated.uuid).toBe(imported.uuid);
+      expect(validated.status).toBe(5);
+      expect(validated.findings).toEqual(FLAWED_EXPECTED);
+      expect(validated.outOfBandReRead).toBe(false);
+      expect(validated.note).toBeUndefined();
+    });
+
+    it('validates the imported clean reference: no-findings, an empty findings list (ACC-002)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const imported = await importSuccess(client, source);
+
+      const validated = await validateSuccess(client, imported.uuid);
+
+      expect(validated.uuid).toBe(imported.uuid);
+      expect(validated.status).toBe('no-findings');
+      expect(validated.findings).toEqual([]);
+      expect(validated.outOfBandReRead).toBe(false);
+      expect(validated.note).toBeUndefined();
+    });
+
+    it('validates a session draft (created, not exported) from the in-memory tree: no note (REQ-004)', async () => {
+      const created = await createSuccess(client, { name: 'Validate Draft' });
+
+      const validated = await validateSuccess(client, created.uuid);
+
+      // The empty process (a create without elements) reports exactly
+      // the two required-event findings on the process id.
+      expect(validated.uuid).toBe(created.uuid);
+      expect(validated.status).toBe(2);
+      expect(validated.findings).toEqual([
+        { rule: 'end-event-required', elementId: 'validate-draft', message: 'Process is missing end event' },
+        { rule: 'start-event-required', elementId: 'validate-draft', message: 'Process is missing start event' },
+      ]);
+      expect(validated.outOfBandReRead).toBe(false);
+      expect(validated.note).toBeUndefined();
+      // The draft is in memory only: no file, no prc directory.
+      expect(existsSync(resolveDocsPrcDir())).toBe(false);
+    });
+
+    it('validates a sound seeded draft (elements + connects) from memory: no-findings (REQ-004, Phase 110 $parent backfill)', async () => {
+      const created = await createSuccess(client, {
+        name: 'Sound Draft',
+        elements: [
+          { type: 'start-event', name: 'Begin' },
+          { type: 'task', name: 'Work' },
+          { type: 'end-event', name: 'Done' },
+        ],
+      });
+      await changeSuccess(client, {
+        uuid: created.uuid,
+        action: 'connect',
+        sourceId: 'startEvent_1',
+        targetId: 'task_1',
+      });
+      await changeSuccess(client, {
+        uuid: created.uuid,
+        action: 'connect',
+        sourceId: 'task_1',
+        targetId: 'endEvent_1',
+      });
+
+      const validated = await validateSuccess(client, created.uuid);
+
+      // The built (in-memory) tree is sound: no findings of any kind,
+      // in particular no crash-derived findings from the connectivity
+      // rules (the pre-backfill defect this leg pins).
+      expect(validated.status).toBe('no-findings');
+      expect(validated.findings).toEqual([]);
+      expect(validated.outOfBandReRead).toBe(false);
+      expect(validated.note).toBeUndefined();
+      expect(existsSync(resolveDocsPrcDir())).toBe(false);
+    });
+
+    it('validates a promoted seeded draft (export within the session): no-findings (REQ-004, Phase 110 $parent backfill)', async () => {
+      const created = await createSuccess(client, {
+        name: 'Promoted Draft',
+        elements: [
+          { type: 'start-event', name: 'Begin' },
+          { type: 'task', name: 'Work' },
+          { type: 'end-event', name: 'Done' },
+        ],
+      });
+      await changeSuccess(client, {
+        uuid: created.uuid,
+        action: 'connect',
+        sourceId: 'startEvent_1',
+        targetId: 'task_1',
+      });
+      await changeSuccess(client, {
+        uuid: created.uuid,
+        action: 'connect',
+        sourceId: 'task_1',
+        targetId: 'endEvent_1',
+      });
+      const exported = await callTool(client, 'export', { uuid: created.uuid });
+      expect(exported.isError).toBe(false);
+
+      const validated = await validateSuccess(client, created.uuid);
+
+      // The promotion caches the in-memory built tree (no re-parse),
+      // so this leg pins the backfill on the promoted path as well.
+      expect(validated.status).toBe('no-findings');
+      expect(validated.findings).toEqual([]);
+      expect(validated.outOfBandReRead).toBe(false);
+      expect(validated.note).toBeUndefined();
+    });
+
+    it('notes the out-of-band re-read when the registered file changed (REQ-004)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const imported = await importSuccess(client, source);
+      writeFileSync(
+        imported.path,
+        readFileSync(imported.path, 'utf8').replace('name="Review order"', 'name="Second look"'),
+      );
+
+      const validated = await validateSuccess(client, imported.uuid);
+
+      expect(validated.outOfBandReRead).toBe(true);
+      expect(validated.note).toMatch(/out of band/);
+      expect(validated.note).not.toContain('\n');
+      // The re-read state is lint-clean again (the rename changes no findings).
+      expect(validated.status).toBe('no-findings');
+      expect(validated.findings).toEqual([]);
+    });
+
+    it('maps an unknown uuid to a single-line isError result (REQ-004)', async () => {
+      const unknown = 'ffffffff-ffff-4fff-afff-ffffffffffff';
+
+      const outcome = await callTool(client, 'validate', { uuid: unknown });
+
+      expect(outcome.isError).toBe(true);
+      expect(outcome.text).toBe(`process ${unknown} is not registered`);
+      expect(outcome.text).not.toContain('\n');
+    });
+
+    it('maps a deleted own file (path missing) to a single-line isError result (REQ-004)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const imported = await importSuccess(client, source);
+      rmSync(imported.path);
+
+      const outcome = await callTool(client, 'validate', { uuid: imported.uuid });
+
+      expect(outcome.isError).toBe(true);
+      expect(outcome.text).toBe(`${imported.path} does not exist`);
+      expect(outcome.text).not.toContain('\n');
+    });
+
+    it('maps a corrupted own file (unparseable) to a single-line isError result (REQ-004)', async () => {
+      const source = copyFixture(ORDER_FIXTURE, 'src.bpmn');
+      const imported = await importSuccess(client, source);
+      writeFileSync(imported.path, 'this is not BPMN');
+
+      const outcome = await callTool(client, 'validate', { uuid: imported.uuid });
+
+      expect(outcome.isError).toBe(true);
+      expect(outcome.text).toMatch(/^failed to parse BPMN 2\.0 XML: /);
+      expect(outcome.text).not.toContain('\n');
+    });
+
+    it('rejects a malformed uuid shape via zod (no crash, an isError result)', async () => {
+      const missing = await callTool(client, 'validate', {});
+      expect(missing.isError).toBe(true);
+      expect(missing.text.length).toBeGreaterThan(0);
+
+      const wrongShape = await callTool(client, 'validate', { uuid: 'not-a-uuid' });
+      expect(wrongShape.isError).toBe(true);
+      expect(wrongShape.text).not.toContain('\n');
+      expect(wrongShape.text).toMatch(/at uuid/);
+    });
+  });
+
+  describe('the validate config legs (feat-19 ACC-004/ACC-005, injected lint root)', () => {
+    // These legs point the server's lint config load at a temporary
+    // package root (the createServer injectable, Task 110.120) so the
+    // committed .bpmnlintrc is never touched or left modified.
+
+    /** Connects a second in-memory server pair over the injected lint root. */
+    const connectInjected = async (lintRoot: string): Promise<Client> => {
+      const injectedStore = new PrcStore(resolveDocsPrcDir(), logger);
+      const injectedServer = createServer(loggingConfig, injectedStore, lintRoot);
+      const [injectedClientTransport, injectedServerTransport] = InMemoryTransport.createLinkedPair();
+      const injectedClient = new Client({ name: 'test-client', version: '0.0.0' });
+      await Promise.all([
+        injectedServer.connect(injectedServerTransport),
+        injectedClient.connect(injectedClientTransport),
+      ]);
+      return injectedClient;
+    };
+
+    it('a rules override in the config drops the corresponding finding (ACC-004)', async () => {
+      const lintRoot = join(tempDir, 'lint-override');
+      mkdirSync(lintRoot);
+      writeFileSync(
+        join(lintRoot, '.bpmnlintrc'),
+        JSON.stringify({ extends: 'bpmnlint:recommended', rules: { 'no-disconnected': 'off' } }),
+      );
+      const injected = await connectInjected(lintRoot);
+
+      try {
+        const source = copyFixture(FLAWED_FIXTURE, 'flawed-override.bpmn');
+        const imported = await importSuccess(injected, source);
+        const validated = await validateSuccess(injected, imported.uuid);
+
+        // The overridden rule (no-disconnected) no longer reports; the
+        // other four findings stay -- the config drives validation.
+        expect(validated.status).toBe(4);
+        expect(validated.findings).toEqual(FLAWED_EXPECTED.filter((finding) => finding.rule !== 'no-disconnected'));
+        // The resource still reports the extended preset.
+        expect(await readBpmnlintConfigMember(injected)).toEqual({ preset: 'bpmnlint:recommended' });
+      } finally {
+        await injected.close();
+      }
+    });
+
+    it('a missing config is a structured failure in validate and in the config resource (ACC-005)', async () => {
+      const lintRoot = join(tempDir, 'lint-missing');
+      mkdirSync(lintRoot);
+      const injected = await connectInjected(lintRoot);
+
+      try {
+        // The resource surfaces the core's structured failure instead
+        // of a preset...
+        expect(await readBpmnlintConfigMember(injected)).toEqual({
+          error: { code: 'config-missing', message: `bpmnlint config not found at ${join(lintRoot, '.bpmnlintrc')}` },
+        });
+
+        // ...and validate returns the same single-line message.
+        const source = copyFixture(ORDER_FIXTURE, 'clean-missing-config.bpmn');
+        const imported = await importSuccess(injected, source);
+        const outcome = await callTool(injected, 'validate', { uuid: imported.uuid });
+        expect(outcome.isError).toBe(true);
+        expect(outcome.text).toBe(`bpmnlint config not found at ${join(lintRoot, '.bpmnlintrc')}`);
+        expect(outcome.text).not.toContain('\n');
+      } finally {
+        await injected.close();
+      }
+    });
+
+    it('an invalid config is a structured failure in validate and in the config resource (ACC-005)', async () => {
+      const lintRoot = join(tempDir, 'lint-invalid');
+      mkdirSync(lintRoot);
+      writeFileSync(join(lintRoot, '.bpmnlintrc'), '{ not json');
+      const injected = await connectInjected(lintRoot);
+
+      try {
+        // The resource surfaces the core's structured failure instead
+        // of a preset...
+        const member = await readBpmnlintConfigMember(injected);
+        expect(member.error?.code).toBe('config-invalid');
+        expect(member.error?.message).toContain(join(lintRoot, '.bpmnlintrc'));
+        expect(member.error?.message).not.toContain('\n');
+
+        // ...and validate returns the very same single-line message.
+        const source = copyFixture(ORDER_FIXTURE, 'clean-invalid-config.bpmn');
+        const imported = await importSuccess(injected, source);
+        const outcome = await callTool(injected, 'validate', { uuid: imported.uuid });
+        expect(outcome.isError).toBe(true);
+        expect(outcome.text).toBe(member.error?.message);
+        expect(outcome.text).not.toContain('\n');
+      } finally {
+        await injected.close();
+      }
+    });
+
+    it('an array extends reports the comma-joined preset in the config resource (Phase 130 I1)', async () => {
+      const lintRoot = join(tempDir, 'lint-array-extends');
+      mkdirSync(lintRoot);
+      writeFileSync(join(lintRoot, '.bpmnlintrc'), JSON.stringify({ extends: ['a', 'b'] }));
+      const injected = await connectInjected(lintRoot);
+
+      try {
+        // The resource joins the array preset with ", " (the
+        // bpmnlintResourceInfo array branch).
+        expect(await readBpmnlintConfigMember(injected)).toEqual({ preset: 'a, b' });
+      } finally {
+        await injected.close();
+      }
+    });
+
+    it('a config without any extends reports the none sentinel in the config resource (Phase 130 I1)', async () => {
+      const lintRoot = join(tempDir, 'lint-no-extends');
+      mkdirSync(lintRoot);
+      writeFileSync(join(lintRoot, '.bpmnlintrc'), '{}');
+      const injected = await connectInjected(lintRoot);
+
+      try {
+        // The resource reports the `none` sentinel (the otel member's
+        // `disabled` convention) when the config extends no preset.
+        expect(await readBpmnlintConfigMember(injected)).toEqual({ preset: 'none' });
+      } finally {
+        await injected.close();
+      }
     });
   });
 

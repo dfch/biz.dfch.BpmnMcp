@@ -38,8 +38,22 @@ const DIST_ENTRY = resolve(dirname(fileURLToPath(import.meta.url)), '../dist/ind
 // working directory (test/ -> fixtures/).
 const FIXTURES_DIR = resolve(fileURLToPath(new URL('./fixtures/', import.meta.url)));
 const ORDER_FIXTURE = join(FIXTURES_DIR, 'order-process.bpmn');
+const FLAWED_FIXTURE = join(FIXTURES_DIR, 'flawed-process.bpmn');
 
 const UUID_V4_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/**
+ * The pinned findings of the flawed fixture under the committed
+ * config (feat-19 Task 100.100 spike): deterministic order, by rule,
+ * then element id.
+ */
+const FLAWED_EXPECTED = [
+  { rule: 'end-event-required', elementId: 'flawed-process', message: 'Process is missing end event' },
+  { rule: 'no-disconnected', elementId: 'orphan-task', message: 'Element is not connected' },
+  { rule: 'no-implicit-end', elementId: 'orphan-task', message: 'Element is an implicit end' },
+  { rule: 'no-implicit-end', elementId: 'review', message: 'Element is an implicit end' },
+  { rule: 'no-implicit-start', elementId: 'orphan-task', message: 'Element is an implicit start' },
+];
 
 /** The `import` tool result's success JSON (feat-2 REQ-005). */
 interface ImportSuccessPayload {
@@ -64,6 +78,15 @@ interface ParseSuccessPayload {
   uuid: string;
   elements: { id: string; type: string; name?: string }[];
   flows: { id: string; kind: string; source?: string; target?: string; conditionExpression?: string }[];
+  outOfBandReRead: boolean;
+  note?: string;
+}
+
+/** The `validate` tool result's success JSON (feat-19 REQ-004). */
+interface ValidateSuccessPayload {
+  uuid: string;
+  status: string | number;
+  findings: { rule: string; elementId?: string; message: string }[];
   outOfBandReRead: boolean;
   note?: string;
 }
@@ -129,6 +152,13 @@ async function parseSuccess(client: Client, uuid: string): Promise<ParseSuccessP
   const outcome = await callTool(client, 'parse', { uuid });
   expect(outcome.isError).toBe(false);
   return JSON.parse(outcome.text) as ParseSuccessPayload;
+}
+
+/** Calls `validate` over stdio and narrows the success JSON (the test expects success). */
+async function validateSuccess(client: Client, uuid: string): Promise<ValidateSuccessPayload> {
+  const outcome = await callTool(client, 'validate', { uuid });
+  expect(outcome.isError).toBe(false);
+  return JSON.parse(outcome.text) as ValidateSuccessPayload;
 }
 
 /** The id of an element reference, whether resolved (an element) or raw (a string). */
@@ -329,14 +359,22 @@ describe('spawned server over real stdio (ACC-006, ACC-007, ACC-008)', () => {
     expect(() => JSON.parse(firstLine)).not.toThrow();
   });
 
-  it('lists exactly the five tools over real stdio: change, create, export, import, parse (feat-18 ACC-004)', async () => {
-    // The handshake lists create, change, and parse in addition to the existing tools.
+  it('lists exactly the six tools over real stdio: change, create, export, import, parse, validate (feat-19 ACC-003)', async () => {
+    // The handshake lists create, change, parse, and validate in
+    // addition to the existing tools.
     const docsDir = join(tempCwd, 'docs');
     ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
     await client.connect(transport);
 
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name).sort()).toEqual(['change', 'create', 'export', 'import', 'parse']);
+    expect(tools.map((tool) => tool.name).sort()).toEqual([
+      'change',
+      'create',
+      'export',
+      'import',
+      'parse',
+      'validate',
+    ]);
   });
 
   describe('the import/export tools (feat-2, ACC-006/ACC-008, stdio leg)', () => {
@@ -777,6 +815,150 @@ describe('spawned server over real stdio (ACC-006, ACC-007, ACC-008)', () => {
       // bytes is a cache hit and the server stays usable.
       writeFileSync(imported.path, fixtureBytes);
       const restored = await parseSuccess(client, imported.uuid);
+      expect(restored.outOfBandReRead).toBe(false);
+      expect(restored.note).toBeUndefined();
+    });
+  });
+
+  describe('the validate tool (feat-19, ACC-001/ACC-002/ACC-005, REQ-004, stdio leg)', () => {
+    it('ACC-001: imports the flawed fixture, validate reports the five pinned findings, status the count', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const imported = await importSuccess(client, FLAWED_FIXTURE);
+
+      const validated = await validateSuccess(client, imported.uuid);
+
+      expect(validated.uuid).toBe(imported.uuid);
+      expect(validated.status).toBe(5);
+      expect(validated.findings).toEqual(FLAWED_EXPECTED);
+      expect(validated.outOfBandReRead).toBe(false);
+      expect(validated.note).toBeUndefined();
+    });
+
+    it('ACC-002: validates the clean reference no-findings; the config resource reports the preset', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const imported = await importSuccess(client, ORDER_FIXTURE);
+
+      const validated = await validateSuccess(client, imported.uuid);
+      expect(validated.status).toBe('no-findings');
+      expect(validated.findings).toEqual([]);
+      expect(validated.outOfBandReRead).toBe(false);
+
+      // The config resource reports the resolved preset of the
+      // committed .bpmnlintrc, not the former placeholder.
+      const { contents } = await client.readResource({ uri: 'bpmnmcp://config' });
+      const [content] = contents;
+      if (!('text' in content)) {
+        throw new Error('expected a text resource content');
+      }
+      const config = JSON.parse(content.text) as {
+        bpmnlint: { preset?: string; error?: { code: string; message: string } };
+      };
+      expect(config.bpmnlint).toEqual({ preset: 'bpmnlint:recommended' });
+    });
+
+    it('REQ-004: validating a draft (created, not exported) serves the in-memory tree, no note', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const created = await createSuccess(client, { name: 'Spawn Draft' });
+
+      const validated = await validateSuccess(client, created.uuid);
+
+      // The empty process (a create without elements) reports exactly
+      // the two required-event findings on the process id.
+      expect(validated.uuid).toBe(created.uuid);
+      expect(validated.status).toBe(2);
+      expect(validated.findings).toEqual([
+        { rule: 'end-event-required', elementId: 'spawn-draft', message: 'Process is missing end event' },
+        { rule: 'start-event-required', elementId: 'spawn-draft', message: 'Process is missing start event' },
+      ]);
+      expect(validated.outOfBandReRead).toBe(false);
+      expect(validated.note).toBeUndefined();
+      // The draft is in memory only: the prc file does not exist.
+      expect(existsSync(join(docsDir, 'prc'))).toBe(false);
+    });
+
+    it('REQ-004: validating a sound seeded draft (created, changed, not exported) reports no-findings', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const created = await createSuccess(client, {
+        name: 'Sound Spawn Draft',
+        elements: [
+          { type: 'start-event', name: 'Begin' },
+          { type: 'task', name: 'Work' },
+          { type: 'end-event', name: 'Done' },
+        ],
+      });
+      await changeSuccess(client, {
+        uuid: created.uuid,
+        action: 'connect',
+        sourceId: 'startEvent_1',
+        targetId: 'task_1',
+      });
+      await changeSuccess(client, {
+        uuid: created.uuid,
+        action: 'connect',
+        sourceId: 'task_1',
+        targetId: 'endEvent_1',
+      });
+
+      const validated = await validateSuccess(client, created.uuid);
+
+      expect(validated.status).toBe('no-findings');
+      expect(validated.findings).toEqual([]);
+      expect(validated.outOfBandReRead).toBe(false);
+      expect(validated.note).toBeUndefined();
+      // The draft is in memory only: the prc file does not exist.
+      expect(existsSync(join(docsDir, 'prc'))).toBe(false);
+    });
+
+    it('ACC-005: an unknown uuid is a single-line isError; the server stays usable', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const unknown = 'ffffffff-ffff-4fff-afff-ffffffffffff';
+      const unknownValidate = await callTool(client, 'validate', { uuid: unknown });
+      expect(unknownValidate.isError).toBe(true);
+      expect(unknownValidate.text).toBe(`process ${unknown} is not registered`);
+      expect(unknownValidate.text).not.toContain('\n');
+
+      // The server stays usable: a subsequent valid call succeeds.
+      const imported = await importSuccess(client, ORDER_FIXTURE);
+      const validated = await validateSuccess(client, imported.uuid);
+      expect(validated.uuid).toBe(imported.uuid);
+      expect(validated.status).toBe('no-findings');
+    });
+
+    it('ACC-005: a corrupted own file is a single-line isError; the registration and the server stay usable', async () => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const imported = await importSuccess(client, ORDER_FIXTURE);
+      const fixtureBytes = readFileSync(ORDER_FIXTURE);
+
+      // Corrupt the own prc file out of band.
+      writeFileSync(imported.path, 'this is not BPMN');
+      const corrupted = await callTool(client, 'validate', { uuid: imported.uuid });
+      expect(corrupted.isError).toBe(true);
+      expect(corrupted.text).toMatch(/^failed to parse BPMN 2\.0 XML: /);
+      expect(corrupted.text).not.toContain('\n');
+
+      // The registration survived the failed re-read: restoring the
+      // bytes is a cache hit and the server stays usable.
+      writeFileSync(imported.path, fixtureBytes);
+      const restored = await validateSuccess(client, imported.uuid);
+      expect(restored.status).toBe('no-findings');
       expect(restored.outOfBandReRead).toBe(false);
       expect(restored.note).toBeUndefined();
     });
