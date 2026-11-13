@@ -2,7 +2,7 @@
 classification: null
 created: '2026-11-07T09:00:42.381+01:00'
 id: feat-20-preview-tool
-status: planning
+status: review
 type: feat
 updated: '2026-11-07T09:38:07.580+01:00'
 version: 1.0.0
@@ -127,7 +127,7 @@ process view. Anchored in GitHub issue #20.
 
 - [x] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier).
 - [x] Task 120.110: Update the C4 container description (six to seven MCP tools; the "planned" qualifier drops from the preview tool - the in-process localhost:8080 endpoint is already drawn as the Stage 1 target, plan fix D1) and this feat's Progress section.
-- [ ] Task 120.120: Open the PR referencing issue #20.
+- [x] Task 120.120: Open the PR referencing issue #20. (Executed by the orchestrator's final step per the feat-18/19 convention: PR #24, base dev, opened against the four feature commits (14a30c9, 6549d31, 45597c3, 82ed81f); the frontmatter status flip to review committed separately.)
 
 ## Progress
 
@@ -176,12 +176,21 @@ to seven MCP tools, the "planned" qualifier dropped from `preview`,
 plan fix D1) and the variants' shared description stays
 byte-identical (the feat-17/18/19 convention, proven by sha256
 before and after the edit). Task 120.120 (open the PR referencing
-GitHub issue #20) is the orchestrator's final step per the feat-18/
-19 convention and is intentionally left unticked here.
+GitHub issue #20) was executed as the orchestrator's final step:
+the frontmatter status remains review and PR #24 (base dev, opened
+against GitHub issue #20) stays open and untouched.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-13T19:14:46.000Z - PR #24 opened (base dev); status to review
+
+Task 120.120 was executed by the orchestrator's final step:
+PR #24 opened (base dev, head feat-20, closing GitHub issue
+#20) against the four feature commits (14a30c9, 6549d31,
+45597c3, 82ed81f); the frontmatter status flipped planning
+to review; the PR is recorded in Related PRs / Commits.
 
 #### 2026-11-13T16:59:20.000Z - Phase 120: gates and docs
 
@@ -421,3 +430,4 @@ tarball holds for the same reason (`bpmn-js` is a declared dependency).
 ### Related PRs / Commits
 
 - GitHub issue #20
+- PR #24 (feat-20-preview-tool → dev): the preview MCP tool
