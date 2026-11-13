@@ -11,6 +11,8 @@ import { resolveDocsPrcDir } from './paths.js';
 import { ELEMENT_TYPES, type PrcElementType } from './prc/editing.js';
 import { loadLintConfig, type LintConfigResult, type LintError } from './prc/lint.js';
 import type { ChangeSuccess, PrcError, PrcStore } from './prc/store.js';
+import { openBrowser } from './preview/browser-opener.js';
+import { buildViewUrl, type PreviewServer } from './preview/preview-server.js';
 
 /**
  * The `bpmnmcp://config` resource's `bpmnlint` member (feat-19
@@ -254,23 +256,59 @@ const VALIDATE_OUTPUT = z.object({
 type ValidateOutput = z.infer<typeof VALIDATE_OUTPUT>;
 
 /**
+ * The `preview` tool input (feat-20 REQ-004): the process uuid - a
+ * non-empty string at the MCP layer (the store's own not-registered
+ * error is the unknown-uuid leg; preview addresses every registered
+ * and session-draft process).
+ */
+const PREVIEW_INPUT = {
+  uuid: z.string().min(1),
+};
+
+/**
+ * The `preview` tool's result shape (feat-20 REQ-004, ACC-007): the
+ * view URL, the port the preview server listens on, whether the
+ * browser opener started, and - when it did not - the single-line
+ * reason. Consumed at the type level (the `PreviewOutput` below,
+ * which the handler builds its result from); the runtime value is
+ * the contract documentation the plan requires, so the
+ * unused-variable warning is suppressed on purpose (the
+ * `VALIDATE_OUTPUT` convention).
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const PREVIEW_OUTPUT = z.object({
+  url: z.string(),
+  port: z.number().int().positive(),
+  opened: z.boolean(),
+  reason: z.string().optional(),
+});
+
+/** The `preview` tool's result type (derived from the schema above). */
+type PreviewOutput = z.infer<typeof PREVIEW_OUTPUT>;
+
+/**
  * Creates the `McpServer` instance and registers its resources (feat-1 REQ-006, REQ-007) and tools (feat-2 REQ-005,
- * REQ-006, REQ-007; feat-17 REQ-001, REQ-002; feat-18 REQ-001..REQ-004; feat-19 REQ-004, REQ-005): the `version` and
- * `config` resources, plus `import` (one file path in; the registered uuid and path out), `export` (a registered uuid
- * plus an optional explicit path in; the written path out), `create` (a name plus the optional initial elements in; the
- * draft uuid and the derived identity out), `change` (a uuid plus the discriminated action in; the operation detail
- * out), `parse` (a uuid in; the addressable element and flow lists of the current state out) and `validate` (a uuid
- * in; the lint findings and status of the current state out). All six tools are thin adapters over the constructed
- * `PrcStore` (QA pair 7.0010): zod validates the input shape, the store owns every filesystem touch, and the store's
- * structured results are mapped 1:1 to tool results -- failures become `isError: true` results carrying the store's
- * single-line message (nothing is thrown across the MCP boundary), successes become JSON text content, mirroring how
- * the resources serialize theirs.
+ * REQ-006, REQ-007; feat-17 REQ-001, REQ-002; feat-18 REQ-001..REQ-004; feat-19 REQ-004, REQ-005; feat-20 REQ-004): the
+ * `version` and `config` resources, plus `import` (one file path in; the registered uuid and path out), `export` (a
+ * registered uuid plus an optional explicit path in; the written path out), `create` (a name plus the optional initial
+ * elements in; the draft uuid and the derived identity out), `change` (a uuid plus the discriminated action in; the
+ * operation detail out), `parse` (a uuid in; the addressable element and flow lists of the current state out),
+ * `validate` (a uuid in; the lint findings and status of the current state out) and `preview` (a uuid in; the view
+ * URL, port, and browser-open outcome out). The six store tools are thin adapters over the constructed `PrcStore`
+ * (QA pair 7.0010): zod validates the input shape, the store owns every filesystem touch, and the store's structured
+ * results are mapped 1:1 to tool results -- failures become `isError: true` results carrying the store's single-line
+ * message (nothing is thrown across the MCP boundary), successes become JSON text content, mirroring how the
+ * resources serialize theirs. The `preview` tool adapts the constructed `PreviewServer` (the lazy, idempotent
+ * `ensureServer`) plus the cross-platform browser opener: the same mapping applies (the port-in-use failure becomes
+ * the single-line `isError` result, the success becomes the `{ url, port, opened, reason? }` JSON).
  * Transport-agnostic by design, so both the real stdio entry point (`index.ts`) and the in-memory MCP-level test
  * (`test/`) can build the identical server and only differ in which transport they `connect()` it to.
  *
  * @param loggingConfig - The effective logging configuration (the `config` resource's data).
  * @param store - The constructed `prc` artifact store the tools adapt (a constructed instance, not a factory -- the
  *   plan's module-layout note).
+ * @param previewServer - The constructed preview server the `preview` tool adapts (one per process lifetime,
+ *   feat-20 REQ-005; the entry point `index.ts` constructs it and owns its clean shutdown).
  * @param lintPackageRoot - Where the committed `.bpmnlintrc` resolves for the `validate` tool and the `config`
  *   resource (defaults to this package's own root; injectable by the tests -- the production entry point
  *   (`index.ts`) passes the default, so the production behavior is unchanged).
@@ -278,6 +316,7 @@ type ValidateOutput = z.infer<typeof VALIDATE_OUTPUT>;
 export function createServer(
   loggingConfig: LoggingConfig,
   store: PrcStore,
+  previewServer: PreviewServer,
   lintPackageRoot: string = PACKAGE_ROOT,
 ): McpServer {
   const packageMetadata = readPackageMetadata();
@@ -527,6 +566,39 @@ export function createServer(
         findings: result.findings,
         outOfBandReRead: result.outOfBandReRead,
         ...(result.outOfBandReRead ? { note: RE_READ_NOTE } : {}),
+      };
+      return toolJson(payload);
+    },
+  );
+
+  server.registerTool(
+    'preview',
+    {
+      title: 'Preview a BPMN process',
+      description:
+        'Opens the default browser at the process view URL for the turn-based Stage 1 preview ' +
+        '(xdg-open on Linux, open on macOS, start on Windows). The preview server starts lazily ' +
+        'on the first call (127.0.0.1, port 8080), and every later call reuses the running ' +
+        'server on the same port - no rebind. The contract is turn-based: the served page ' +
+        'reflects the process state at call time, after the conditional re-read of the ' +
+        'registered file; nothing refreshes automatically, so call preview again after changes. ' +
+        'Returns JSON with url, port, opened, and reason (present when opened is false - no ' +
+        'browser opener is available or the launch failed; the tool call still succeeds, since ' +
+        'the server is reachable by hand at the returned url).',
+      inputSchema: PREVIEW_INPUT,
+    },
+    async (args) => {
+      const ensured = await previewServer.ensureServer();
+      if (!ensured.ok) {
+        return toolErrorText(ensured.error.message);
+      }
+      const url = buildViewUrl(ensured.port, args.uuid);
+      const opened = await openBrowser(url);
+      const payload: PreviewOutput = {
+        url,
+        port: ensured.port,
+        opened: opened.opened,
+        ...(opened.opened ? {} : { reason: opened.reason }),
       };
       return toolJson(payload);
     },

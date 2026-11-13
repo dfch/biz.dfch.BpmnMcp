@@ -4,6 +4,8 @@
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer as createNetServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +16,7 @@ import { resolveDocsPrcDir } from '../src/paths.js';
 import { collectAddressableInventory, collectElementInventory, parseBpmn } from '../src/prc/moddle.js';
 import type { PrcLogger } from '../src/prc/store.js';
 import { PrcStore } from '../src/prc/store.js';
+import { PREVIEW_HOST, PreviewServer } from '../src/preview/preview-server.js';
 import { createServer } from '../src/server.js';
 
 /**
@@ -39,6 +42,21 @@ const MALFORMED_FIXTURE = join(FIXTURES_DIR, 'malformed.bpmn');
 const FLAWED_FIXTURE = join(FIXTURES_DIR, 'flawed-process.bpmn');
 
 const UUID_V4_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/**
+ * Frees an ephemeral test port (a probe listener on port 0). The
+ * in-memory server's preview instance never uses the fixed 8080:
+ * test files run in parallel workers, and the spawn suite's
+ * fixed-port legs already own 8080 (the `mcp-server.test.ts`
+ * sibling-file convention, feat-20 Phase 110).
+ */
+async function getFreePort(): Promise<number> {
+  const probe = createNetServer();
+  await new Promise<void>((resolveProbe) => probe.listen(0, PREVIEW_HOST, resolveProbe));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise<void>((resolveClose) => probe.close(() => resolveClose()));
+  return port;
+}
 
 /**
  * The pinned findings of the flawed fixture under the committed
@@ -202,7 +220,7 @@ async function readBpmnlintConfigMember(client: Client): Promise<BpmnlintResourc
   return parsed.bpmnlint;
 }
 
-describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
+describe('MCP server (feat-1 resources, feat-2 import/export tools, feat-20 preview tool)', () => {
   let client: Client;
   let tempDir: string;
   let foreignDir: string;
@@ -210,6 +228,7 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
   let originalDocsDir: string | undefined;
   let logger: PrcLogger;
   let records: LogRecord[];
+  let previewServer: PreviewServer;
 
   const loggingConfig: LoggingConfig = {
     logFile: 'logs/server',
@@ -229,8 +248,12 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
     ({ logger, records } = createFakeLogger());
 
     // Exactly as index.ts wires it: the resolved prc path + the logger.
+    // The preview server is the same constructed instance the `preview`
+    // tool adapts (feat-20 REQ-005) - on an ephemeral port here, so the
+    // parallel test workers never fight over the fixed 8080.
     const store = new PrcStore(resolveDocsPrcDir(), logger);
-    const server = createServer(loggingConfig, store);
+    previewServer = new PreviewServer(store, logger, { port: await getFreePort() });
+    const server = createServer(loggingConfig, store, previewServer);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
     client = new Client({ name: 'test-client', version: '0.0.0' });
@@ -240,6 +263,7 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
 
   afterEach(async () => {
     await client.close();
+    await previewServer.closeServer();
     process.chdir(originalCwd);
     if (originalDocsDir === undefined) {
       delete process.env.BPMN_MCP_DOCS_DIR;
@@ -304,9 +328,9 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
     });
   });
 
-  it('lists exactly the six tools: change, create, export, import, parse, validate (feat-19 ACC-003)', async () => {
-    // The handshake lists create, change, parse, and validate in
-    // addition to the existing tools.
+  it('lists exactly the seven tools: change, create, export, import, parse, preview, validate (feat-20 ACC-004)', async () => {
+    // The handshake lists preview (feat-20) in addition to the six
+    // store tools.
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       'change',
@@ -314,6 +338,7 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
       'export',
       'import',
       'parse',
+      'preview',
       'validate',
     ]);
   });
@@ -1013,7 +1038,8 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
     /** Connects a second in-memory server pair over the injected lint root. */
     const connectInjected = async (lintRoot: string): Promise<Client> => {
       const injectedStore = new PrcStore(resolveDocsPrcDir(), logger);
-      const injectedServer = createServer(loggingConfig, injectedStore, lintRoot);
+      const injectedPreview = new PreviewServer(injectedStore, logger, { port: await getFreePort() });
+      const injectedServer = createServer(loggingConfig, injectedStore, injectedPreview, lintRoot);
       const [injectedClientTransport, injectedServerTransport] = InMemoryTransport.createLinkedPair();
       const injectedClient = new Client({ name: 'test-client', version: '0.0.0' });
       await Promise.all([
@@ -1171,6 +1197,57 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools)', () => {
         { id: 'flow-1', kind: 'sequence', source: 'start-event', target: 'review-task' },
         { id: 'flow-2', kind: 'sequence', source: 'review-task', target: 'end-event' },
       ]);
+    });
+  });
+
+  describe('the preview tool (feat-20 REQ-004, ACC-007, adapter leg)', () => {
+    // The stdio e2e legs (ACC-001/ACC-002, the fixed-port HTTP round
+    // trip) live in the spawn suite (Task 110.110); this block pins
+    // the adapter mapping: the input rejections and the ensureServer
+    // failure mapping.
+
+    it('rejects a malformed input shape via zod (no crash, an isError result)', async () => {
+      const missing = await callTool(client, 'preview', {});
+      expect(missing.isError).toBe(true);
+      expect(missing.text).not.toContain('\n');
+      expect(missing.text).toMatch(/at uuid/);
+
+      const blank = await callTool(client, 'preview', { uuid: '' });
+      expect(blank.isError).toBe(true);
+      expect(blank.text).not.toContain('\n');
+      expect(blank.text).toMatch(/at uuid/);
+
+      // A rejected input never starts the preview server.
+      expect(previewServer.isRunning()).toBe(false);
+    });
+
+    it('maps an ensureServer port-in-use failure to a single-line isError result (REQ-001: never a silent rebind)', async () => {
+      const port = await getFreePort();
+      const blocker = createNetServer();
+      await new Promise<void>((resolveBlocker) => blocker.listen(port, PREVIEW_HOST, resolveBlocker));
+
+      const injectedStore = new PrcStore(resolveDocsPrcDir(), logger);
+      const injectedPreview = new PreviewServer(injectedStore, logger, { port });
+      const injectedServer = createServer(loggingConfig, injectedStore, injectedPreview);
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      const injectedClient = new Client({ name: 'test-client', version: '0.0.0' });
+
+      try {
+        await Promise.all([injectedServer.connect(serverTransport), injectedClient.connect(clientTransport)]);
+
+        const uuid = 'ffffffff-ffff-4fff-afff-ffffffffffff';
+        const outcome = await callTool(injectedClient, 'preview', { uuid });
+
+        expect(outcome.isError).toBe(true);
+        expect(outcome.text).toBe(
+          `port ${port} on ${PREVIEW_HOST} is already in use; the preview server did not start`,
+        );
+        expect(outcome.text).not.toContain('\n');
+        expect(injectedPreview.isRunning()).toBe(false);
+      } finally {
+        await injectedClient.close();
+        await new Promise<void>((resolveClose) => blocker.close(() => resolveClose()));
+      }
     });
   });
 });

@@ -120,8 +120,8 @@ process view. Anchored in GitHub issue #20.
 
 #### Phase 110: Opener and tool
 
-- [ ] Task 110.100: Add the cross-platform browser opener (stubbed-spawn unit leg included) and register the `preview` tool (zod schema, `{ url, port, opened, reason? }` result, description stating the turn-based contract).
-- [ ] Task 110.110: Update the handshake test; add the spawn e2e legs (ACC-001, ACC-002).
+- [x] Task 110.100: Add the cross-platform browser opener (stubbed-spawn unit leg included) and register the `preview` tool (zod schema, `{ url, port, opened, reason? }` result, description stating the turn-based contract).
+- [x] Task 110.110: Update the handshake test; add the spawn e2e legs (ACC-001, ACC-002).
 
 #### Phase 120: Gates and docs
 
@@ -133,22 +133,94 @@ process view. Anchored in GitHub issue #20.
 
 ### Current Status
 
-**As of 2026-11-11**: Phase 100 (Preview server and page) is
-implemented and gate-green: the `src/preview/` server module (the
-loopback bind on the fixed, test-injectable port 8080, the
-`/processes/<uuid>` XML endpoint over the store's new
+**As of 2026-11-13**: Phases 100 and 110 are implemented and
+gate-green. Phase 100 (Preview server and page): the `src/preview/`
+server module (the loopback bind on the fixed, test-injectable port
+8080, the `/processes/<uuid>` XML endpoint over the store's new
 `readProcessXml`, the `/view/<uuid>` page endpoint, the
 `/bpmn-js/<file>` asset route over the installed `bpmn-js` dist, the
 structured `port-in-use` start error, and the stdout discipline via
 the injected logger), the single static preview page (the read-only
 Viewer, the pinned bundle/CSS, the watermark intact), the unref plus
 explicit-close lifecycle (plan fix E1), and the HTTP-level plus
-child-process test legs (20 tests). Phases 110 (opener and tool) and
-120 (gates and docs) remain.
+child-process test legs. Phase 110 (Opener and tool): the
+cross-platform browser opener (`src/preview/browser-opener.ts`: the
+fire-and-forget spawn of `xdg-open`/`open`/`cmd /c start "" <url>`,
+the injectable spawner seam, the never-rejecting failure contract),
+the `preview` tool (the `{ url, port, opened, reason? }` result, the
+turn-based contract in the description, the port-in-use `isError`
+mapping), the one-server-per-lifetime wiring in `index.ts` with the
+clean shutdown (`server.server.onclose` plus `SIGINT`/`SIGTERM`),
+and the test legs (the stubbed-spawn unit leg, the seven-tool
+handshake in-memory and over stdio, the spawn e2e legs, the SIGTERM
+clean-shutdown leg). In this environment the two fixed-port spawn
+legs (ACC-001/ACC-002) report themselves as skipped: an external
+container-level Jetty/PlantUML service (root-owned) permanently owns
+127.0.0.1:8080, and the entry point binds the fixed port
+unconditionally (a configurable port is explicitly out of scope);
+the port-in-use spawn leg then exercises exactly that state, and the
+full composition was smoke-verified end to end on a scratch copy of
+the built entry point with the port swapped. Phase 120 (gates and
+docs) remains.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-13T11:37:00.000Z - Phase 110 implemented (Opener and tool)
+
+Tasks 110.100/110.110 done. New: `src/preview/browser-opener.ts`
+(the cross-platform opener: `xdg-open` (Linux), `open` (macOS),
+`cmd /c start "" <url>` (Windows - `start` is a `cmd` builtin, so
+`cmd` itself is spawned; the empty quoted title is mandatory when a
+URL follows), the fire-and-forget `spawn` with `detached: true` and
+ignored stdio, the child `unref()`ed on `spawn`; a missing binary
+(ENOENT), any spawn error, a synchronous spawner throw, or an
+unknown platform resolves to `opened: false` with a single-line
+`reason` - it never rejects, ACC-007). The `preview` tool is
+registered in `server.ts` (`createServer` now takes the constructed
+`PreviewServer` as its third argument; the `lintPackageRoot`
+injectable moves to fourth): the input is the process uuid (a
+non-empty string), the success result is the `{ url, port, opened,
+reason? }` JSON (the url from `buildViewUrl`), the `ensureServer`
+port-in-use failure is the repo-standard single-line `isError`
+result, and the description states the turn-based contract (the
+served page reflects the state at call time after the conditional
+re-read; nothing refreshes automatically; repeated calls reuse the
+running server on the same port). `index.ts` constructs the single
+preview server for the process lifetime and materializes the Phase
+100 WIRING POINT: `server.server.onclose` (the SDK `Protocol`'s
+public callback - the SDK `Server` is not an EventEmitter; the
+plan's "'close' event" candidate does not exist on the installed
+1.32.x) plus `SIGINT`/`SIGTERM` (the stdio session end the host
+performs: the SDK's own `StdioClientTransport.close()` signals this
+child with `SIGTERM` after a grace period), both funneling into one
+idempotent routine that closes the preview server and exits (the
+explicit exit is required - the stdio transport's stdin `data`
+listener keeps the event loop alive). Tests: the stubbed-spawn unit
+leg (`test/preview/browser-opener.test.ts`, 10 tests: the
+per-platform command + args, the fire-and-forget options, the
+unref, the success/ENOENT/spawn-error/synchronous-throw/unknown-
+platform legs), the seven-tool handshake (in-memory and spawn), the
+in-memory adapter legs (the zod input rejections, the port-in-use
+mapping on an ephemeral port), and the spawn e2e legs (ACC-001: the
+view URL plus the page and XML over real HTTP; ACC-002: the second
+call reuses the running server; the REQ-001 port-in-use leg over
+real stdio; the REQ-005 SIGTERM clean-shutdown leg: the handler
+runs, the process exits deterministically, the `shutting-down`
+event lands in the log). The fixed-port e2e legs guard themselves at
+runtime: the entry point binds the fixed 8080 unconditionally (a
+configurable port is out of scope), so when an external service
+already owns it (this runtime: a container-level Jetty/PlantUML
+service, root-owned) they report a dynamic skip (`ctx.skip`), and
+the port-in-use leg - which takes the port itself when the
+environment left it free - exercises exactly that state instead.
+The full composition (the preview call, the page/XML fetch, the
+reuse, the SIGTERM close of a RUNNING server with the port
+released) was additionally smoke-verified end to end against a
+scratch copy of the built entry point with the port swapped. Gate
+chain green: `npm run build`, `npm run lint`, `npm run format:check`,
+`npm test` (354 passed, 2 skipped - the two fixed-port legs above).
 
 #### 2026-11-11T11:07:00.000Z - Phase 100 implemented (Preview server and page)
 
@@ -185,6 +257,34 @@ QA pairs 4.0010/4.0020/6.0010.
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-13T11:37:00.000Z - Phase 110 design decisions
+
+Settled in implementation: (1) the clean-shutdown hook is
+`server.server.onclose` plus `SIGINT`/`SIGTERM` - the SDK `Server`
+is not an EventEmitter (the plan's "'close' event" candidate does
+not exist on the installed 1.32.x); its base class `Protocol`
+exposes a public `onclose` callback instead, and for stdio that
+callback fires only on an explicit or error-driven close - the
+stdio session end a host performs is its own
+`StdioClientTransport.close()` signaling this child with `SIGTERM`
+after a grace period (verified against the installed SDK sources);
+the explicit `process.exit(0)` after the close is required because
+the stdio transport's stdin `data` listener keeps the event loop
+alive; (2) the `preview` tool's input is a non-empty string uuid
+(the task's explicit shape) rather than the v4-shape `UUID_V4` the
+other tools use - the store's not-registered error is the
+unknown-uuid leg; (3) the spawn e2e's fixed-port legs (ACC-001/
+ACC-002) are guarded by a runtime check of the actual `preview`
+outcome (a dynamic `ctx.skip` on the exact port-in-use message)
+rather than a module-load port probe: the entry point binds the
+fixed 8080 unconditionally (a configurable port is explicitly out
+of scope), so in an environment where an external service owns 8080
+(this runtime: a container-level Jetty/PlantUML service, root-
+owned, not stoppable from the repo) the bind-impossible legs report
+themselves as skipped, and the port-in-use leg - which takes the
+port itself when the environment left it free - exercises exactly
+that state over real stdio.
 
 #### 2026-11-11T11:07:00.000Z - Phase 100 design decisions
 
