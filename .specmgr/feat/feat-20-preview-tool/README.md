@@ -125,15 +125,15 @@ process view. Anchored in GitHub issue #20.
 
 #### Phase 120: Gates and docs
 
-- [ ] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier).
-- [ ] Task 120.110: Update the C4 container description (six to seven MCP tools; the "planned" qualifier drops from the preview tool - the in-process localhost:8080 endpoint is already drawn as the Stage 1 target, plan fix D1) and this feat's Progress section.
+- [x] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier).
+- [x] Task 120.110: Update the C4 container description (six to seven MCP tools; the "planned" qualifier drops from the preview tool - the in-process localhost:8080 endpoint is already drawn as the Stage 1 target, plan fix D1) and this feat's Progress section.
 - [ ] Task 120.120: Open the PR referencing issue #20.
 
 ## Progress
 
 ### Current Status
 
-**As of 2026-11-13**: Phases 100 and 110 are implemented and
+**As of 2026-11-13**: Phases 100-120 are implemented and
 gate-green. Phase 100 (Preview server and page): the `src/preview/`
 server module (the loopback bind on the fixed, test-injectable port
 8080, the `/processes/<uuid>` XML endpoint over the store's new
@@ -161,11 +161,112 @@ unconditionally (a configurable port is explicitly out of scope);
 the port-in-use spawn leg then exercises exactly that state, and the
 full composition was smoke-verified end to end on a scratch copy of
 the built entry point with the port swapped. Phase 120 (gates and
-docs) remains.
+docs): the full seven-command gate chain is green on Node 26.13.0
+(`npm ci`, `npm run lint`, `npm run format:check`, `npm run build`,
+`npm test -- --coverage` - 19 test files / 354 passed, 2 skipped,
+the two fixed-port legs above, `npm audit`, `uvx pre-commit run
+--all-files`); `npm audit` surfaced one new transitive advisory
+(`hono` / `@hono/node-server` via `@modelcontextprotocol/sdk`)
+beyond the documented residual, fixed by pinning the
+advisory-release versions through root `overrides` plus the
+lockfile so the audit is again byte-identical to the documented
+archunit -> minimatch 10.2.6 residual (listed twice). The C4
+container description in both `docs/c4` variants was corrected (six
+to seven MCP tools, the "planned" qualifier dropped from `preview`,
+plan fix D1) and the variants' shared description stays
+byte-identical (the feat-17/18/19 convention, proven by sha256
+before and after the edit). Task 120.120 (open the PR referencing
+GitHub issue #20) is the orchestrator's final step per the feat-18/
+19 convention and is intentionally left unticked here.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-13T16:59:20.000Z - Phase 120: gates and docs
+
+Phase 120 (Tasks 120.100/120.110) landed. The full seven-command
+gate chain ran green on Node 26.13.0 from the repository root as the
+final-state confirming run (after the C4 and Progress edits). One
+drift item was found and fixed (the new transitive `hono` advisory,
+below); no other drift (license headers, archunit, prettier) was
+found to fix. Task 120.120 (open the PR referencing GitHub issue
+#20) is left to the orchestrator's final step per the feat-18/19
+convention and is intentionally left unticked in this plan.
+
+- **Gate evidence (Task 120.100)**: `npm ci` (exit 0, fresh
+  install from the lockfile); `npm run lint` (exit 0, clean);
+  `npm run format:check` (exit 0, "All matched files use
+  Prettier code style!" - `docs/` is in `.prettierignore`, so
+  the C4 edits are exempt); `npm run build` (exit 0,
+  type-check + emit, `dist/` rebuilt for the spawn tests);
+  `npm test -- --coverage` (exit 0, 19 test files / 354
+  tests passed, 2 skipped - the two documented fixed-port
+  spawn legs ACC-001/ACC-002: a root-owned container-level
+  Jetty/PlantUML service permanently owns 127.0.0.1:8080 in
+  this sandbox and the entry point binds the fixed port
+  unconditionally (a configurable port is explicitly out of
+  scope), so they self-report a dynamic skip here and run
+  un-skipped in CI with a clean 8080. Coverage report-only per
+  QA 0.0260: 94.4% statements, 88.74% branches, 98.07%
+  functions, 94.38% lines);
+  `npm audit` (byte-identical to the documented residual after
+  the fix below - archunit -> minimatch 10.2.6,
+  GHSA-g3hv-75wg-m249, moderate, listed twice);
+  `uvx pre-commit run --all-files` (all seven hooks passed:
+  check yaml, fix end of files, trim trailing whitespace,
+  ESLint, Prettier, tsc, vitest).
+- **Audit drift found and fixed (Task 120.100)**: the first
+  `npm audit` of this phase reported two NEW moderate advisories
+  beyond the documented residual: `hono` <=4.13.15 (installed
+  4.13.14) and `@hono/node-server` 2.0.0-2.1.5 (installed
+  2.1.5). Both are pulled in transitively by
+  `@modelcontextprotocol/sdk` 1.32.2, for which no newer release
+  exists (its ranges: `hono: ^4.11.4` and
+  `@hono/node-server: ^1.19.9 || ^2.0.5` already permit the
+  fixed versions). Fixed by pinning the advisory-release
+  versions through root-manifest `overrides`: `hono: 4.13.18`,
+  `@hono/node-server: 2.1.8`, and updating the two
+  `package-lock.json` entries (only `version`/`resolved`/
+  `integrity` change; both keep the same `engines`/
+  `peerDependencies` shape, and `@hono/node-server` 2.1.8's
+  `hono: ^4 || ^5.0.0-0` peer is satisfied by 4.13.18). The
+  change is at the workspace root (`package.json` +
+  `package-lock.json`), not under `apps/`, and changes no
+  production behavior (the server uses the stdio transport, not
+  the hono-based HTTP transport). After the fix, `npm audit` is
+  byte-identical to the documented residual.
+- **C4 correction (Task 120.110)**: the MCP Server container
+  description in both `docs/c4/c4-container.puml` and
+  `docs/c4/workspace.dsl` moves `preview` from the planned list into
+  the exposed tools - exactly one line changed per file (verified by
+  `git diff`), everything else untouched; the in-process
+  localhost:8080 preview endpoint clause, the HumanUser preview
+  relation, and the `bpmn-js` techn entry were already correct and
+  stay as they are (plan fix D1). The shared sentence reads: before -
+  "Exposes six MCP tools (create, change, import, export, parse,
+  validate) and two MCP resources (version, config) over stdio; the
+  remaining Stage 1 tool (preview) is planned."; after - "Exposes
+  seven MCP tools (create, change, import, export, parse, validate,
+  preview) and two MCP resources (version, config) over stdio." A
+  residual search for `planned` and `six MCP tools` across both
+  files returns no hits (the Stage 2 "deferred" markings are
+  legitimate and stay). **Byte-identity proof (the feat-17/18/19
+  convention)**: the description string was extracted from each file
+  before and after the edit and compared - before: both 1098 chars,
+  sha256
+  c2443719988302e49a7a4bcb6c1363a5438f3fb8d7e88f01026518d6cea92bed
+  (identical in both files); after: both 1060 chars, sha256
+  de2e3d6c3707dd531d93aa2997ed0d778a5012f8d00e681d8e7c07dfc5bc2bf8
+  (identical in both files); with the corrected sentence masked out,
+  the rest of each description is byte-identical to its pre-edit text
+  (the -38 char delta is exactly the 161 -> 123 char sentence
+  change). The updated `docs/c4/c4-container.puml` was validated with
+  the `specmgr_validate_plantuml` tool: `structure_ok: true`,
+  `checked_by: structure`, `source_state: none` (no
+  SPECMGR_PLANTUML_* render source is configured in this
+  environment, so the structure-check floor is the available
+  verdict), no errors, no warnings.
 
 #### 2026-11-13T11:37:00.000Z - Phase 110 implemented (Opener and tool)
 
