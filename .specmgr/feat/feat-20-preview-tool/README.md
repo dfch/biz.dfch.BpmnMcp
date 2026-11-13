@@ -14,7 +14,8 @@ version: 1.0.0
 
 ### Overview
 
-Implements the `preview` tool (REQ bb63c11f) per QA 4.0010/4.0020:
+Implements the `preview` tool (REQ bb63c11f-c3e2-4ed0-8f4e-5453b28260f6)
+per QA 4.0010/4.0020:
 after an agent creates or changes a diagram, a human opens a local
 browser and sees the current state rendered visually by a read-only
 bpmn-js Viewer - a turn-based preview, not a continuously live
@@ -33,9 +34,9 @@ process view. Anchored in GitHub issue #20.
 
 - REQ-001: A preview HTTP server module: binds `127.0.0.1` only, fixed port 8080 (`DEFAULT_PORT`, test-injectable); a port already in use is a structured error at start - never a silent rebind; the server never writes to stdout (the stdio protocol constraint, QA 0.0050) - it logs through pino like everything else.
 - REQ-002: Endpoints: `GET /processes/<uuid>` returns the process's current XML (`application/xml`) after the store's conditional re-read; an unknown uuid returns 404; the view page endpoint serves the preview page; there are no write endpoints and no authentication (local-only, QA 6.0010).
-- REQ-003: The preview page is a single static asset (QA 0.0250) running the bpmn-js Viewer in read-only mode; the Viewer bundle and CSS are served from the installed `bpmn-js` package (a new runtime dependency, located via Node's own resolver - `createRequire`) at fixed asset paths (user decision 2026-11-07; vendoring into the build output was rejected: `dist/` is not self-contained in this architecture anyway - every code dependency resolves from `node_modules` at runtime - and a copy step plus drift gate would buy nothing).
+- REQ-003: The preview page is a single static asset (QA 4.0010) running the bpmn-js Viewer in read-only mode; the Viewer bundle and CSS are served from the installed `bpmn-js` package (a new runtime dependency, located via Node's own resolver - `createRequire`) at the pinned asset paths - `bpmn-viewer.production.min.js`, `assets/diagram-js.css`, and `assets/bpmn-js.css` under the package's `dist/` (plan fix G3; user decision 2026-11-07; vendoring into the build output was rejected: `dist/` is not self-contained in this architecture anyway - every code dependency resolves from `node_modules` at runtime - and a copy step plus drift gate would buy nothing).
 - REQ-004: A `preview` tool: input a process uuid; ensures the server is running (idempotent - a second call reuses the live server); opens the user's default browser at the process view URL (`xdg-open` on Linux, `open` on macOS, `start` on Windows); returns `{ url, port, opened, reason? }` with `opened` false and a `reason` when no opener is available or the launch fails - the tool call itself succeeds, since the server is reachable by hand.
-- REQ-005: Lifecycle: the server starts lazily on the first `preview` call and stays alive for the process lifetime; it is closed on clean shutdown (the server's existing exit handling); the turn-based contract holds - each `preview` reflects the state at call time (after its re-read), nothing refreshes automatically.
+- REQ-005: Lifecycle: the server starts lazily on the first `preview` call and stays alive for the process lifetime; it is closed on clean shutdown (the unref plus the explicit close that Task 100.110 builds - the entry point ships no exit handling to reuse, plan fix E1); the turn-based contract holds - each `preview` reflects the state at call time (after its re-read), nothing refreshes automatically.
 - REQ-006: Tests: HTTP legs against an ephemeral test port (page 200 with the viewer markers, XML endpoint 200 with re-read behavior, unknown-uuid 404, in-use-port structured error), a browser-opener unit leg with a stubbed spawn, and proof that the running server does not pollute stdout (the existing stdio handshake test keeps passing with the server up).
 
 ### Acceptance Criteria
@@ -43,7 +44,10 @@ process view. Anchored in GitHub issue #20.
 - [ ] ACC-001: `preview` on an imported process returns the view URL; `GET` of the page and of `/processes/<uuid>` serve the viewer page and the current XML (verified at the HTTP level in tests).
 - [ ] ACC-002: A second `preview` call (any process) reuses the running server: no second bind attempt, no error, same port.
 - [ ] ACC-003: The served page renders through the unmodified bpmn-js Viewer: the watermark attribution is present and unstripped (the accepted license clause).
-- [ ] ACC-004: With the preview server running, the stdio protocol stays clean (the handshake test passes; no stdout writes from the HTTP module), the full gate chain is green on Node 26, and the handshake lists `preview`.
+- [ ] ACC-004: With the preview server running, the stdio protocol stays clean (the handshake test passes; no stdout writes from the HTTP module), the full gate chain is green on Node 26 (DEC 5185d651-7283-4b1d-87e0-272795d15edf), and the handshake lists `preview`.
+- [ ] ACC-005: The negative legs hold: a port already in use is a structured error at start (never a silent rebind), an unknown uuid returns 404, and non-GET methods get 405 (REQ-001/REQ-002, verified at the HTTP level in tests).
+- [ ] ACC-006: The clean-shutdown leg holds: the listener does not keep the process alive on its own (unref), and the explicit close releases the port (REQ-005, built by Task 100.110 - plan fix E1).
+- [ ] ACC-007: The `preview` tool returns `{ url, port, opened, reason? }`; when no opener is available or the launch fails, `opened` is false with a `reason` and the tool call still succeeds (REQ-004, the stubbed-spawn unit leg of Task 110.100).
 
 ### Scope
 
@@ -52,7 +56,10 @@ process view. Anchored in GitHub issue #20.
 - The preview HTTP server module (bind, endpoints, lifecycle, stdout discipline) and its tests.
 - The preview page (single static asset) and the `bpmn-js` runtime dependency with asset serving.
 - The cross-platform browser opener and the `preview` tool adapter.
-- The C4 description update (the localhost:8080 endpoint becomes real) and this feat's Progress discipline.
+- The C4 description update (the tool count goes six to seven and the
+  "planned" qualifier drops from the preview tool - the in-process
+  localhost:8080 endpoint is already drawn as the Stage 1 target, plan
+  fix D1) and this feat's Progress discipline.
 
 #### Explicitly Out Of Scope
 
@@ -65,7 +72,7 @@ process view. Anchored in GitHub issue #20.
 
 #### Depends On
 
-- feat-2-prc-import-export (the `PrcStore`, the conditional re-read, the package-root pattern)
+- FEAT feat-2-prc-import-export (the `PrcStore`, the conditional re-read, the package-root pattern)
 - DEC fdc84432-1b48-4eb9-82e0-ec13cb8cf8ba: Use a Node/TypeScript MCP Server for Agent-Driven BPMN Modeling (the bpmn.io License watermark clause)
 - GitHub issue #20
 
@@ -76,7 +83,7 @@ process view. Anchored in GitHub issue #20.
   the recommendation is `GET /view/<uuid>` serving the same static
   page, whose JavaScript reads the uuid from the path and fetches
   `/processes/<uuid>`.
-- **Single asset.** The page is one HTML document (QA 0.0250: "the
+- **Single asset.** The page is one HTML document (QA 4.0010: "the
   preview page is a single static asset"); the Viewer's JS/CSS come
   from the installed `bpmn-js` package over fixed asset paths
   (REQ-003, decided).
@@ -93,8 +100,15 @@ process view. Anchored in GitHub issue #20.
 
 ### Related Decisions
 
-- DEC fdc84432-1b48-4eb9-82e0-ec13cb8cf8ba: Use a Node/TypeScript MCP Server for Agent-Driven BPMN Modeling (the watermark clause, the Stage 2 precedent)
-- QA pairs 4.0010/4.0020/6.0010 (docs/qa/qa-818fac76): the preview contract, view-only scope, localhost-only binding
+- DEC fdc84432-1b48-4eb9-82e0-ec13cb8cf8ba: Use a Node/TypeScript MCP
+  Server for Agent-Driven BPMN Modeling (the watermark clause, the Stage
+  2 precedent)
+- DEC 5185d651-7283-4b1d-87e0-272795d15edf: Adopt Node.js 26 as the Sole
+  Supported Runtime (the Node 26 gate-chain floor of ACC-004/Task
+  120.100)
+- QA 818fac76-96fb-4e3c-acb8-e5520fab5913 (the implementation Q&A): the
+  preview contract (pairs 4.0010/4.0020), view-only scope,
+  localhost-only binding (pair 6.0010)
 
 ### Task List
 
@@ -112,7 +126,7 @@ process view. Anchored in GitHub issue #20.
 #### Phase 120: Gates and docs
 
 - [ ] Task 120.100: Run the full gate chain on Node 26 and fix any drift (license headers, archunit, prettier).
-- [ ] Task 120.110: Update the C4 container description (the in-process localhost:8080 endpoint becomes implemented) and this feat's Progress section.
+- [ ] Task 120.110: Update the C4 container description (six to seven MCP tools; the "planned" qualifier drops from the preview tool - the in-process localhost:8080 endpoint is already drawn as the Stage 1 target, plan fix D1) and this feat's Progress section.
 - [ ] Task 120.120: Open the PR referencing issue #20.
 
 ## Progress
@@ -200,8 +214,8 @@ from `node_modules` at runtime (`dist/` is compiled glue, not a
 bundle), so reading two static asset files from the installed
 `bpmn-js` adds no new deployment requirement; vendoring would add a
 copy step and a drift gate for a self-containment that `dist/` does
-not have anyway. The feat-11 packed tarball holds for the same
-reason (`bpmn-js` is a declared dependency).
+not have anyway. The FEAT feat-11-npm-publish-mcp-registry packed
+tarball holds for the same reason (`bpmn-js` is a declared dependency).
 
 ### Related PRs / Commits
 
