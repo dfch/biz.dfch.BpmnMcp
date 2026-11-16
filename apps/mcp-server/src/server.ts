@@ -256,13 +256,18 @@ const VALIDATE_OUTPUT = z.object({
 type ValidateOutput = z.infer<typeof VALIDATE_OUTPUT>;
 
 /**
- * The `preview` tool input (feat-20 REQ-004): the process uuid - a
- * non-empty string at the MCP layer (the store's own not-registered
- * error is the unknown-uuid leg; preview addresses every registered
- * and session-draft process).
+ * The `preview` tool input (feat-20 REQ-004, review fix E1): the
+ * process uuid shape-constrained to the v4 UUIDs this server assigns
+ * (the `UUID_V4` convention of `change`/`parse`/`validate`) - the
+ * uuid reaches the browser opener's command line and the view URL, so
+ * a non-shape uuid is rejected at the MCP layer before either. The
+ * store's own not-registered error is the unknown-uuid leg: preview
+ * addresses every registered and session-draft process, and a
+ * well-formed but unregistered uuid is a client-side 404 page, not a
+ * tool error.
  */
 const PREVIEW_INPUT = {
-  uuid: z.string().min(1),
+  uuid: UUID_V4,
 };
 
 /**
@@ -577,7 +582,7 @@ export function createServer(
       title: 'Preview a BPMN process',
       description:
         'Opens the default browser at the process view URL for the turn-based Stage 1 preview ' +
-        '(xdg-open on Linux, open on macOS, start on Windows). The preview server starts lazily ' +
+        '(xdg-open on Linux, open on macOS, rundll32 on Windows). The preview server starts lazily ' +
         'on the first call (127.0.0.1, port 8080), and every later call reuses the running ' +
         'server on the same port - no rebind. The contract is turn-based: the served page ' +
         'reflects the process state at call time, after the conditional re-read of the ' +

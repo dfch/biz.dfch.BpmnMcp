@@ -9,10 +9,11 @@ import { platform as osPlatform } from 'node:os';
  * The cross-platform browser opener (feat-20 REQ-004, QA 4.0010): a
  * fire-and-forget `child_process.spawn` of the platform's default
  * browser opener - `xdg-open` (Linux), `open` (macOS), and
- * `cmd /c start "" <url>` (Windows, where `start` is a shell
- * builtin, so `cmd` itself is spawned) - with `detached: true` and
- * stdio ignored, and the child `unref()`ed, so the opener never
- * holds the MCP server process.
+ * `rundll32 url.dll,FileProtocolHandler` (Windows, the shell-free
+ * URL protocol handler - review fix E1: no `cmd` re-parses the
+ * assembled command line) - with `detached: true` and stdio
+ * ignored, and the child `unref()`ed, so the opener never holds the
+ * MCP server process.
  *
  * Failure contract (REQ-004, ACC-007): a missing binary (ENOENT),
  * any other spawn error, a synchronous throw from the spawner, or a
@@ -74,11 +75,13 @@ export const OPENER_SPAWN_OPTIONS: SpawnOptions = {
 
 /**
  * Resolves the platform opener command + args for a URL (REQ-004):
- * `xdg-open` (Linux), `open` (macOS), and `cmd /c start "" <url>`
- * (Windows - `start` is a `cmd` builtin, so `cmd` itself is spawned;
- * the empty quoted title is mandatory when a URL follows, otherwise
- * `start` reads the URL as the window title). `null` on a platform
- * with no known opener (the `openBrowser` no-op failure leg).
+ * `xdg-open` (Linux), `open` (macOS), and `rundll32
+ * url.dll,FileProtocolHandler` (Windows - the shell-free URL
+ * protocol handler, review fix E1: spawning `cmd /c start "" <url>`
+ * would let `cmd` re-parse the assembled command line, a command-
+ * injection surface for a URL outside the expected shape). `null`
+ * on a platform with no known opener (the `openBrowser` no-op
+ * failure leg).
  *
  * @param url - The URL to open.
  * @param target - The target platform (`os.platform()` by default in `openBrowser`).
@@ -91,7 +94,7 @@ export function resolveOpenerCommand(url: string, target: NodeJS.Platform): Open
     return { command: 'open', args: [url] };
   }
   if (target === 'win32') {
-    return { command: 'cmd', args: ['/c', 'start', '', url] };
+    return { command: 'rundll32', args: ['url.dll,FileProtocolHandler', url] };
   }
   return null;
 }
@@ -130,7 +133,9 @@ export function openBrowser(url: string, options: OpenBrowserOptions = {}): Prom
   if (opener === null) {
     return Promise.resolve({
       opened: false,
-      reason: `no browser opener is known for the platform ${target}; open ${url} by hand`,
+      // The url is interpolated into the single-line reason contract
+      // (review fix E1): collapse any whitespace it carries.
+      reason: oneLine(`no browser opener is known for the platform ${target}; open ${url} by hand`),
     });
   }
   return new Promise<OpenBrowserResult>((resolveOpen) => {

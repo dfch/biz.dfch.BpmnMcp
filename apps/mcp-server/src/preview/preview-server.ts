@@ -43,7 +43,13 @@ import { PREVIEW_PAGE } from './preview-page.js';
  * (REQ-001). The listener is `unref()`ed at start so it cannot keep
  * the process alive on its own once the stdio work is done (E1a);
  * the explicit `closeServer()` remains the deterministic shutdown leg
- * that releases the port (E1b).
+ * that releases the port (E1b). Review fixes on the lifecycle: a
+ * close that races the first in-flight `ensureServer` awaits the
+ * bind instead of orphaning it (I1), a post-listen server error
+ * transitions the server to the not-running state (I2), and a close
+ * waits at most `closeFallbackTimeoutMs` (default
+ * `DEFAULT_CLOSE_FALLBACK_TIMEOUT_MS`) before force-terminating
+ * wedged in-flight connections (I5).
  *
  * Stdout discipline (REQ-001, QA 0.0050): nothing in this module
  * writes to stdout -- every log line goes through the injected
@@ -62,6 +68,13 @@ export const DEFAULT_PORT = 8080;
 
 /** The only host the preview server binds (REQ-001, QA 6.0010: loopback, never a network interface). */
 export const PREVIEW_HOST = '127.0.0.1';
+
+/**
+ * The bounded wait before a close force-terminates still-wedged
+ * in-flight connections (review fix I5: a wedged request must not
+ * hold the deterministic close until the host's SIGKILL escalation).
+ */
+export const DEFAULT_CLOSE_FALLBACK_TIMEOUT_MS = 5000;
 
 /** The fixed URL prefix under which the installed `bpmn-js` package's `dist` assets are served (REQ-003). */
 export const ASSET_URL_PREFIX = '/bpmn-js/';
@@ -128,6 +141,13 @@ export interface PreviewServerOptions {
    * for the tests).
    */
   assetDir?: string;
+  /**
+   * The bounded wait (in milliseconds) before `closeServer`
+   * force-terminates still-wedged in-flight connections (review fix
+   * I5; defaults to `DEFAULT_CLOSE_FALLBACK_TIMEOUT_MS`, test-
+   * injectable like the port).
+   */
+  closeFallbackTimeoutMs?: number;
 }
 
 /**
@@ -167,13 +187,17 @@ export function resolveBpmnJsDistDir(): string {
 /**
  * Builds the view URL for a process (the plan's Design Notes view-URL
  * scheme): `http://127.0.0.1:<port>/view/<uuid>` -- the URL the Phase
- * 110 browser opener points the user's default browser at.
+ * 110 browser opener points the user's default browser at. The uuid
+ * is percent-encoded (review fix I3): a value outside the v4 shape
+ * could otherwise carry `#`, `?`, or whitespace into the URL and
+ * mangle the client-side path extraction; for the v4 shape the
+ * encoding is a no-op.
  *
  * @param port - The port the preview server listens on.
  * @param uuid - The process UUID.
  */
 export function buildViewUrl(port: number, uuid: string): string {
-  return `http://${PREVIEW_HOST}:${port}/view/${uuid}`;
+  return `http://${PREVIEW_HOST}:${port}/view/${encodeURIComponent(uuid)}`;
 }
 
 /** The preview server (see the module documentation). */
@@ -186,6 +210,8 @@ export class PreviewServer {
 
   private readonly assetDir: string;
 
+  private readonly closeFallbackTimeoutMs: number;
+
   private httpServer: Server | null = null;
 
   private pendingEnsure: Promise<EnsurePreviewServerResult> | null = null;
@@ -193,7 +219,7 @@ export class PreviewServer {
   /**
    * @param store - The `prc` artifact store the XML endpoint reads from (the core).
    * @param logger - The pino-compatible structured logger (never stdout, REQ-001).
-   * @param options - The port (defaults to `DEFAULT_PORT`) and the asset directory (defaults to the installed `bpmn-js` `dist`).
+   * @param options - The port (defaults to `DEFAULT_PORT`), the asset directory (defaults to the installed `bpmn-js` `dist`), and the close fallback wait (defaults to `DEFAULT_CLOSE_FALLBACK_TIMEOUT_MS`).
    */
   constructor(store: PrcStore, logger: PrcLogger, options: PreviewServerOptions = {}) {
     precondition(
@@ -202,10 +228,16 @@ export class PreviewServer {
     );
     const port = options.port ?? DEFAULT_PORT;
     precondition(Number.isInteger(port) && port > 0 && port <= 65535, 'the port must be a positive integer');
+    const closeFallbackTimeoutMs = options.closeFallbackTimeoutMs ?? DEFAULT_CLOSE_FALLBACK_TIMEOUT_MS;
+    precondition(
+      Number.isInteger(closeFallbackTimeoutMs) && closeFallbackTimeoutMs > 0,
+      'the close fallback timeout must be a positive integer',
+    );
     this.store = store;
     this.logger = logger;
     this.port = port;
     this.assetDir = resolve(options.assetDir ?? resolveBpmnJsDistDir());
+    this.closeFallbackTimeoutMs = closeFallbackTimeoutMs;
   }
 
   /**
@@ -233,8 +265,13 @@ export class PreviewServer {
    * Closes the preview server (REQ-005, plan fix E1b): stops
    * accepting new connections, closes the idle (keep-alive)
    * connections immediately, and resolves when the listener is fully
-   * down and the port released. Idempotent -- closing a server that
-   * was never started, or was already closed, is a no-op;
+   * down and the port released. A start still in flight at close
+   * time is awaited first, so a shutdown racing the first
+   * `ensureServer` cannot orphan the bind (review fix I1); a wedged
+   * in-flight connection is force-terminated after the bounded
+   * `closeFallbackTimeoutMs` wait, so the close is unconditionally
+   * deterministic (review fix I5). Idempotent -- closing a server
+   * that was never started, or was already closed, is a no-op;
    * `ensureServer()` may start a fresh server afterwards.
    *
    * WIRING POINT (Phase 110 / the entry point): the `preview` tool
@@ -247,13 +284,34 @@ export class PreviewServer {
    * keep-alive connections.
    */
   async closeServer(): Promise<void> {
+    // A start still in flight at shutdown time must not be orphaned
+    // (review fix I1): awaiting it lets the bind complete, so the
+    // close below covers a race with the first `ensureServer`. A
+    // failed start (port-in-use) has nothing to close.
+    const pending = this.pendingEnsure;
+    if (pending !== null) {
+      const ensured = await pending;
+      if (!ensured.ok) {
+        return;
+      }
+    }
     const server = this.httpServer;
     if (server === null) {
       return;
     }
     this.httpServer = null;
     await new Promise<void>((resolveClose) => {
-      server.close(() => resolveClose());
+      // A wedged in-flight request must not hold the deterministic
+      // close indefinitely (review fix I5): after the bounded wait
+      // the remaining connections are force-terminated, and the
+      // `close` callback fires.
+      const fallback = setTimeout(() => {
+        server.closeAllConnections();
+      }, this.closeFallbackTimeoutMs);
+      server.close(() => {
+        clearTimeout(fallback);
+        resolveClose();
+      });
       // Deterministic shutdown: the idle (keep-alive) connections are
       // closed immediately so the `close` callback cannot be held open
       // by pooled browser/test sockets (Node >= 18.2).
@@ -321,6 +379,16 @@ export class PreviewServer {
             { event: 'preview-server-error', code: error.code, error: error.message },
             'a preview server error occurred',
           );
+          // A post-listen error means the listener is no longer
+          // serving (review fix I2): transition to the not-running
+          // state and release the port, so `isRunning`/`ensureServer`
+          // report the truth and a later ensure re-binds instead of
+          // reusing a dead listener.
+          if (this.httpServer === server) {
+            this.httpServer = null;
+            server.close();
+            server.closeAllConnections();
+          }
         });
         // E1a: the listener must not keep the process alive on its
         // own once the stdio work is done (the explicit close is
@@ -453,7 +521,14 @@ export class PreviewServer {
       return 404;
     }
     const content = await readFile(filePath);
-    response.writeHead(200, { 'content-type': contentTypeFor(filePath), 'content-length': content.byteLength });
+    response.writeHead(200, {
+      'content-type': contentTypeFor(filePath),
+      'content-length': content.byteLength,
+      // Review fix I4: the served content reflects the state at call
+      // time (the turn-based contract), so a browser tab must not
+      // hold stale assets across a server restart on the fixed port.
+      'cache-control': 'no-cache',
+    });
     response.end(content);
     return 200;
   }
@@ -466,12 +541,12 @@ export class PreviewServer {
   }
 
   private sendHtml(response: ServerResponse, html: string): void {
-    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' });
     response.end(html);
   }
 
   private sendXml(response: ServerResponse, xml: string): void {
-    response.writeHead(200, { 'content-type': 'application/xml; charset=utf-8' });
+    response.writeHead(200, { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'no-cache' });
     response.end(xml);
   }
 

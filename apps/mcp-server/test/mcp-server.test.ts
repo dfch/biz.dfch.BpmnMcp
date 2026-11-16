@@ -127,6 +127,14 @@ interface ValidateSuccessPayload {
   note?: string;
 }
 
+/** The `preview` tool result's success JSON (feat-20 REQ-004, ACC-007). */
+interface PreviewSuccessPayload {
+  url: string;
+  port: number;
+  opened: boolean;
+  reason?: string;
+}
+
 /** The `config` resource's `bpmnlint` member (feat-19 REQ-005, ACC-005). */
 interface BpmnlintResourceJson {
   preset?: string;
@@ -1217,6 +1225,14 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools, feat-20 prev
       expect(blank.text).not.toContain('\n');
       expect(blank.text).toMatch(/at uuid/);
 
+      // A uuid outside the v4 shape is rejected at the MCP layer
+      // before it can reach the view URL or the browser opener
+      // (review fix E1).
+      const shaped = await callTool(client, 'preview', { uuid: 'not-a-uuid' });
+      expect(shaped.isError).toBe(true);
+      expect(shaped.text).not.toContain('\n');
+      expect(shaped.text).toMatch(/at uuid/);
+
       // A rejected input never starts the preview server.
       expect(previewServer.isRunning()).toBe(false);
     });
@@ -1248,6 +1264,37 @@ describe('MCP server (feat-1 resources, feat-2 import/export tools, feat-20 prev
         await injectedClient.close();
         await new Promise<void>((resolveClose) => blocker.close(() => resolveClose()));
       }
+    });
+
+    it('succeeds for a well-formed but unregistered uuid: the 404 is a client-side page state, not a tool error (review fix G1)', async () => {
+      const uuid = '00000000-0000-4000-8000-000000000000';
+
+      const outcome = await callTool(client, 'preview', { uuid });
+
+      // No store pre-check (design decision 2): the broken page is a
+      // client-side 404, the tool call itself succeeds.
+      expect(outcome.isError).toBe(false);
+      const result = JSON.parse(outcome.text) as PreviewSuccessPayload;
+      expect(result.url).toBe(`http://${PREVIEW_HOST}:${previewServer.getPort()}/view/${uuid}`);
+      expect(result.port).toBe(previewServer.getPort());
+      // Headless: the browser opener is not required to exist - the
+      // shape is the contract (the spawn e2e leg pins the same).
+      if (result.opened === true) {
+        expect(result.reason).toBeUndefined();
+      } else {
+        const reason = result.reason;
+        expect(typeof reason).toBe('string');
+        if (typeof reason === 'string') {
+          expect(reason.length).toBeGreaterThan(0);
+          expect(reason).not.toContain('\n');
+        }
+      }
+
+      // The unknown process 404s at the data endpoint (the page
+      // renders its own error state).
+      const response = await fetch(`http://${PREVIEW_HOST}:${previewServer.getPort()}/processes/${uuid}`);
+      expect(response.status).toBe(404);
+      await response.body?.cancel();
     });
   });
 });

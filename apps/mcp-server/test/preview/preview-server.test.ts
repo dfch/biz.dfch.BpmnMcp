@@ -5,8 +5,8 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import type { IncomingHttpHeaders } from 'node:http';
-import { createServer as createNetServer } from 'node:net';
-import type { AddressInfo } from 'node:net';
+import { connect as createNetConnection, createServer as createNetServer } from 'node:net';
+import type { AddressInfo, Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   BPMN_JS_CSS_ASSET,
   buildViewUrl,
+  DEFAULT_CLOSE_FALLBACK_TIMEOUT_MS,
   DIAGRAM_JS_CSS_ASSET,
   DEFAULT_PORT,
   PREVIEW_HOST,
@@ -224,7 +225,11 @@ describe('preview server (feat-20 Phase 100, REQ-001..REQ-003, REQ-005, REQ-006)
   let originalDocsDir: string | undefined;
   const servers: PreviewServer[] = [];
 
-  function createPreviewServer(options: { port: number; assetDir?: string }): PreviewServer {
+  function createPreviewServer(options: {
+    port: number;
+    assetDir?: string;
+    closeFallbackTimeoutMs?: number;
+  }): PreviewServer {
     const preview = new PreviewServer(store, logger, options);
     servers.push(preview);
     return preview;
@@ -270,6 +275,16 @@ describe('preview server (feat-20 Phase 100, REQ-001..REQ-003, REQ-005, REQ-006)
       expect(DEFAULT_PORT).toBe(8080);
       expect(PREVIEW_HOST).toBe('127.0.0.1');
       expect(buildViewUrl(DEFAULT_PORT, UNKNOWN_UUID)).toBe(`http://127.0.0.1:8080/view/${UNKNOWN_UUID}`);
+      // The v4 shape is unaffected by the percent-encoding (a no-op
+      // for the constrained input, review fix I3).
+      expect(buildViewUrl(DEFAULT_PORT, UNKNOWN_UUID)).not.toContain('%');
+      expect(DEFAULT_CLOSE_FALLBACK_TIMEOUT_MS).toBe(5000);
+    });
+
+    it('percent-encodes the uuid in the view URL (review fix I3)', () => {
+      // A value outside the v4 shape (the function is input-agnostic
+      // by design) must not mangle the URL's path extraction.
+      expect(buildViewUrl(DEFAULT_PORT, 'x y#z?w')).toBe(`http://127.0.0.1:8080/view/x%20y%23z%3Fw`);
     });
 
     it('resolves the installed bpmn-js dist directory with the pinned assets present (G3)', () => {
@@ -360,6 +375,73 @@ describe('preview server (feat-20 Phase 100, REQ-001..REQ-003, REQ-005, REQ-006)
       await expect(preview.closeServer()).resolves.toBeUndefined();
     });
 
+    it('a close that races the first in-flight ensure closes the server once the bind completes (review fix I1)', async () => {
+      const port = await getFreePort();
+      const preview = createPreviewServer({ port });
+
+      const starting = preview.ensureServer();
+      await preview.closeServer();
+      const ensured = await starting;
+      expect(ensured).toEqual({ ok: true, port, reused: false });
+      expect(preview.isRunning()).toBe(false);
+
+      // The port is released: a fresh listener can bind it.
+      const rebind = createNetServer();
+      await new Promise<void>((resolveRebind) => rebind.listen(port, PREVIEW_HOST, resolveRebind));
+      await new Promise<void>((resolveClose) => rebind.close(() => resolveClose()));
+    });
+
+    it('a close that races a failing (port-in-use) ensure is a no-op (review fix I1)', async () => {
+      const port = await getFreePort();
+      const blocker = createNetServer();
+      await new Promise<void>((resolveBlocker) => blocker.listen(port, PREVIEW_HOST, resolveBlocker));
+      try {
+        const preview = createPreviewServer({ port });
+
+        const starting = preview.ensureServer();
+        await preview.closeServer();
+        const ensured = await starting;
+        expect(ensured.ok).toBe(false);
+        expect(preview.isRunning()).toBe(false);
+      } finally {
+        await new Promise<void>((resolveClose) => blocker.close(() => resolveClose()));
+      }
+    });
+
+    it('a wedged in-flight request cannot hold the close past the bounded fallback (review fix I5)', async () => {
+      const port = await getFreePort();
+      const preview = createPreviewServer({ port, closeFallbackTimeoutMs: 200 });
+      const started = await preview.ensureServer();
+      expect(started).toEqual({ ok: true, port, reused: false });
+
+      // A request with `Expect: 100-continue` and an unsent body: the
+      // server's automatic 100 response puts the connection in-flight
+      // (not idle), so `closeIdleConnections` leaves it alone and the
+      // `close` callback is held until the bounded fallback
+      // force-terminates it.
+      const socket: Socket = await new Promise((resolveSocket, rejectSocket) => {
+        const connection = createNetConnection(port, PREVIEW_HOST);
+        connection.once('connect', () => resolveSocket(connection));
+        connection.once('error', rejectSocket);
+      });
+      socket.write(
+        'PUT /processes/00000000-0000-4000-8000-000000000000 HTTP/1.1\r\n' +
+          'host: localhost\r\ncontent-length: 5\r\nexpect: 100-continue\r\n\r\n',
+      );
+      // Wait for the server's automatic 100 response so the
+      // connection is in-flight (not idle) before the close runs.
+      await new Promise<void>((resolveData) => socket.once('data', () => resolveData()));
+
+      await preview.closeServer();
+      socket.destroy();
+      expect(preview.isRunning()).toBe(false);
+
+      // The port is released: a fresh listener can bind it.
+      const rebind = createNetServer();
+      await new Promise<void>((resolveRebind) => rebind.listen(port, PREVIEW_HOST, resolveRebind));
+      await new Promise<void>((resolveClose) => rebind.close(() => resolveClose()));
+    }, 10_000);
+
     it('logs the start and each request through the injected logger (never stdout, REQ-001)', async () => {
       const { port } = await startPreview();
       const response = await fetch(`${baseUrl(port)}/view/${UNKNOWN_UUID}`);
@@ -382,6 +464,9 @@ describe('preview server (feat-20 Phase 100, REQ-001..REQ-003, REQ-005, REQ-006)
       const response = await fetch(`${baseUrl(port)}/view/${UNKNOWN_UUID}`);
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toContain('text/html');
+      // The turn-based contract: the served content reflects the
+      // state at call time, so the page is not cacheable (review fix I4).
+      expect(response.headers.get('cache-control')).toBe('no-cache');
       const html = await response.text();
 
       // The page runs the read-only Viewer from the pinned bundle over
@@ -414,6 +499,7 @@ describe('preview server (feat-20 Phase 100, REQ-001..REQ-003, REQ-005, REQ-006)
       const response = await fetch(`${baseUrl(port)}/processes/${imported.uuid}`);
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toContain('application/xml');
+      expect(response.headers.get('cache-control')).toBe('no-cache');
       const xml = await response.text();
       expect(xml).toContain('order-process');
       // The served XML re-parses to the fixture's element inventory.
@@ -486,6 +572,25 @@ describe('preview server (feat-20 Phase 100, REQ-001..REQ-003, REQ-005, REQ-006)
       const bpmnCss = await fetch(`${baseUrl(port)}/bpmn-js/${BPMN_JS_CSS_ASSET}`);
       expect(bpmnCss.status).toBe(200);
       expect(bpmnCss.headers.get('content-type')).toContain('text/css');
+    });
+
+    it('serves the pinned viewer bundle byte-identical to the installed dist file, watermark intact (review fix G2, ACC-003)', async () => {
+      const { port } = await startPreview();
+
+      const response = await fetch(`${baseUrl(port)}/bpmn-js/${VIEWER_JS_ASSET}`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('no-cache');
+      const served = Buffer.from(await response.arrayBuffer());
+      const onDisk = readFileSync(join(resolveBpmnJsDistDir(), VIEWER_JS_ASSET));
+
+      // The serving path must not modify the installed bundle: any
+      // rewriting -- including stripping the attribution the bpmn.io
+      // License requires -- fails this leg.
+      expect(served.equals(onDisk)).toBe(true);
+      // The watermark strings are present in what the browser receives.
+      const text = served.toString('utf8');
+      expect(text).toContain('bjs-powered-by');
+      expect(text).toContain('Powered by bpmn.io');
     });
 
     it('resolves every relative url() reference of the served CSS (no dangling asset)', async () => {

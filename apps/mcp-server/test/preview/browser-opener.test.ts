@@ -81,10 +81,10 @@ describe('browser opener (feat-20 REQ-004, REQ-006, ACC-007)', () => {
       expect(resolveOpenerCommand(VIEW_URL, 'darwin')).toEqual({ command: 'open', args: [VIEW_URL] });
     });
 
-    it('resolves cmd /c start "" <url> on Windows (the empty quoted title is mandatory when a URL follows)', () => {
+    it('resolves the shell-free rundll32 URL handler on Windows (review fix E1: no cmd re-parses the command line)', () => {
       expect(resolveOpenerCommand(VIEW_URL, 'win32')).toEqual({
-        command: 'cmd',
-        args: ['/c', 'start', '', VIEW_URL],
+        command: 'rundll32',
+        args: ['url.dll,FileProtocolHandler', VIEW_URL],
       });
     });
 
@@ -107,13 +107,15 @@ describe('browser opener (feat-20 REQ-004, REQ-006, ACC-007)', () => {
     expect(unrefCount()).toBe(1);
   });
 
-  it('launches the Windows cmd /c start "" <url> shape (success leg)', async () => {
+  it('launches the Windows rundll32 shell-free shape (success leg, review fix E1)', async () => {
     const { spawner, calls } = createSpawner({ spawn: true });
 
     const result = await openBrowser(VIEW_URL, { spawner, platform: 'win32' });
 
     expect(result).toEqual({ opened: true });
-    expect(calls).toEqual([{ command: 'cmd', args: ['/c', 'start', '', VIEW_URL], options: OPENER_SPAWN_OPTIONS }]);
+    expect(calls).toEqual([
+      { command: 'rundll32', args: ['url.dll,FileProtocolHandler', VIEW_URL], options: OPENER_SPAWN_OPTIONS },
+    ]);
   });
 
   it('a missing binary (ENOENT) is opened:false with a single-line reason, no unref (never a rejection)', async () => {
@@ -170,6 +172,19 @@ describe('browser opener (feat-20 REQ-004, REQ-006, ACC-007)', () => {
     if (!result.opened) {
       expect(result.reason).toContain('freebsd');
       expect(result.reason).toContain(VIEW_URL);
+      expect(result.reason).not.toContain('\n');
+    }
+  });
+
+  it('an unknown-platform reason stays single-line even for a newline-carrying url (review fix E1)', async () => {
+    const { spawner, calls } = createSpawner({ spawn: true });
+
+    const result = await openBrowser('http://127.0.0.1:8080/view/a\nb', { spawner, platform: 'freebsd' });
+
+    expect(calls).toHaveLength(0);
+    expect(result.opened).toBe(false);
+    if (!result.opened) {
+      expect(result.reason).toContain('freebsd');
       expect(result.reason).not.toContain('\n');
     }
   });
