@@ -3,7 +3,10 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer as createNetServer } from 'node:net';
+import type { Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ModdleElement } from 'moddle';
 import { getPlane, rectanglesOverlap } from '../src/prc/layout.js';
 import { isModdleElement, parseBpmn } from '../src/prc/moddle.js';
+import { DEFAULT_PORT, PREVIEW_HOST } from '../src/preview/preview-server.js';
 
 /**
  * Spawn-based tests against the real, built artifact
@@ -90,6 +94,17 @@ interface ValidateSuccessPayload {
   outOfBandReRead: boolean;
   note?: string;
 }
+
+/** The `preview` tool result's success JSON (feat-20 REQ-004, ACC-007). */
+interface PreviewSuccessPayload {
+  url: string;
+  port: number;
+  opened: boolean;
+  reason?: string;
+}
+
+/** The structured port-in-use message the preview server reports (REQ-001; one wording, all consumers). */
+const PORT_IN_USE_TEXT = `port ${DEFAULT_PORT} on ${PREVIEW_HOST} is already in use; the preview server did not start`;
 
 /** The tool outcome a test asserts on: the `isError` flag and the single text content. */
 interface ToolOutcome {
@@ -359,9 +374,9 @@ describe('spawned server over real stdio (ACC-006, ACC-007, ACC-008)', () => {
     expect(() => JSON.parse(firstLine)).not.toThrow();
   });
 
-  it('lists exactly the six tools over real stdio: change, create, export, import, parse, validate (feat-19 ACC-003)', async () => {
-    // The handshake lists create, change, parse, and validate in
-    // addition to the existing tools.
+  it('lists exactly the seven tools over real stdio: change, create, export, import, parse, preview, validate (feat-20 ACC-004)', async () => {
+    // The handshake lists preview (feat-20) in addition to the six
+    // store tools.
     const docsDir = join(tempCwd, 'docs');
     ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
     await client.connect(transport);
@@ -373,6 +388,7 @@ describe('spawned server over real stdio (ACC-006, ACC-007, ACC-008)', () => {
       'export',
       'import',
       'parse',
+      'preview',
       'validate',
     ]);
   });
@@ -962,5 +978,225 @@ describe('spawned server over real stdio (ACC-006, ACC-007, ACC-008)', () => {
       expect(restored.outOfBandReRead).toBe(false);
       expect(restored.note).toBeUndefined();
     });
+  });
+
+  describe('the preview tool (feat-20, ACC-001/ACC-002, REQ-001/REQ-004, stdio leg)', () => {
+    /**
+     * Takes the fixed Stage 1 preview port for the duration of a test
+     * when the environment left it free: a `Server` blocker the test
+     * releases, or `null` when an external service (e.g. a
+     * container-level listener) already owns the port. The entry
+     * point binds the fixed port unconditionally (a configurable
+     * port is explicitly out of scope, feat-20), so the port state is
+     * the test's to arrange, not to assume.
+     */
+    async function occupyPreviewPort(): Promise<Server | null> {
+      try {
+        const blocker = createNetServer();
+        await new Promise<void>((resolveBlocker, rejectBlocker) => {
+          blocker.once('error', rejectBlocker);
+          blocker.listen(DEFAULT_PORT, PREVIEW_HOST, () => resolveBlocker());
+        });
+        return blocker;
+      } catch {
+        return null;
+      }
+    }
+
+    it('ACC-001: preview on an imported process returns the view URL; page and XML are served over real HTTP', async (ctx) => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const imported = await importSuccess(client, ORDER_FIXTURE);
+
+      const outcome = await callTool(client, 'preview', { uuid: imported.uuid });
+
+      // In an environment where an external service already owns the
+      // fixed port, the structured port-in-use error is the expected
+      // result - the bind-impossible legs cannot run there and
+      // report themselves as skipped (the port-in-use leg below
+      // covers exactly that state over real stdio).
+      if (outcome.isError && outcome.text === PORT_IN_USE_TEXT) {
+        ctx.skip('the preview port is already taken by an external service in this environment');
+      }
+      expect(outcome.isError).toBe(false);
+      const result = JSON.parse(outcome.text) as PreviewSuccessPayload;
+      expect(result.url).toBe(`http://${PREVIEW_HOST}:${DEFAULT_PORT}/view/${imported.uuid}`);
+      expect(result.port).toBe(DEFAULT_PORT);
+      // Headless: the browser opener is not required to exist - the
+      // shape is the contract (opened:false carries a single-line
+      // reason, opened:true carries none; never a real browser).
+      if (result.opened === true) {
+        expect(result.reason).toBeUndefined();
+      } else {
+        const reason = result.reason;
+        expect(typeof reason).toBe('string');
+        if (typeof reason === 'string') {
+          expect(reason.length).toBeGreaterThan(0);
+          expect(reason).not.toContain('\n');
+        }
+      }
+
+      // The page and the XML are served over real HTTP (ACC-001).
+      const page = await fetch(`http://${PREVIEW_HOST}:${DEFAULT_PORT}/view/${imported.uuid}`);
+      expect(page.status).toBe(200);
+      const html = await page.text();
+      expect(html).toContain('id="bpmn-canvas"');
+      expect(html).toContain('new BpmnJS(');
+
+      const xml = await fetch(`http://${PREVIEW_HOST}:${DEFAULT_PORT}/processes/${imported.uuid}`);
+      expect(xml.status).toBe(200);
+      expect(xml.headers.get('content-type')).toContain('application/xml');
+      expect(await xml.text()).toContain('order-process');
+    }, 30_000);
+
+    it('ACC-002: a second preview call reuses the running server: no second bind, no error, same port', async (ctx) => {
+      const docsDir = join(tempCwd, 'docs');
+      ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+      await client.connect(transport);
+
+      const imported = await importSuccess(client, ORDER_FIXTURE);
+      const first = await callTool(client, 'preview', { uuid: imported.uuid });
+      if (first.isError && first.text === PORT_IN_USE_TEXT) {
+        ctx.skip('the preview port is already taken by an external service in this environment');
+      }
+      expect(first.isError).toBe(false);
+      const firstResult = JSON.parse(first.text) as PreviewSuccessPayload;
+      expect(firstResult.port).toBe(DEFAULT_PORT);
+      expect(firstResult.url).toBe(`http://${PREVIEW_HOST}:${DEFAULT_PORT}/view/${imported.uuid}`);
+
+      // A second call (any process) reuses the live server: no
+      // second bind attempt, no error, the same port.
+      const second = await callTool(client, 'preview', { uuid: imported.uuid });
+      expect(second.isError).toBe(false);
+      const secondResult = JSON.parse(second.text) as PreviewSuccessPayload;
+      expect(secondResult.port).toBe(DEFAULT_PORT);
+      expect(secondResult.url).toBe(firstResult.url);
+
+      // The same server still serves (no rebind in between).
+      const page = await fetch(`http://${PREVIEW_HOST}:${DEFAULT_PORT}/view/${imported.uuid}`);
+      expect(page.status).toBe(200);
+      await page.body?.cancel();
+    }, 30_000);
+
+    it('REQ-001: a taken preview port is a single-line isError over real stdio; the server stays usable', async () => {
+      // Take the port when the environment left it free (otherwise an
+      // external service already owns it - the same state this leg
+      // needs).
+      const blocker = await occupyPreviewPort();
+      try {
+        const docsDir = join(tempCwd, 'docs');
+        ({ client, transport } = connectSpawnedServer(tempCwd, docsDir));
+        await client.connect(transport);
+
+        const imported = await importSuccess(client, ORDER_FIXTURE);
+
+        const outcome = await callTool(client, 'preview', { uuid: imported.uuid });
+        expect(outcome.isError).toBe(true);
+        expect(outcome.text).toBe(PORT_IN_USE_TEXT);
+        expect(outcome.text).not.toContain('\n');
+
+        // The tool failure never crashes the server: another tool works.
+        const parsed = await parseSuccess(client, imported.uuid);
+        expect(parsed.uuid).toBe(imported.uuid);
+      } finally {
+        if (blocker !== null) {
+          await new Promise<void>((resolveClose) => blocker.close(() => resolveClose()));
+        }
+      }
+    }, 30_000);
+
+    it('REQ-005: SIGTERM is a clean shutdown - the handler runs and the process exits deterministically', async () => {
+      // The stdio session end a host performs is a SIGTERM to this
+      // child (the SDK's own StdioClientTransport.close() grace
+      // period); the entry point's shutdown hook must turn it into a
+      // deterministic close (the preview server, when running) plus a
+      // clean exit - not the default signal death (code null, signal
+      // SIGTERM). The preview server is lazy and never starts in this
+      // leg, so it exercises the wiring without the fixed port.
+      const docsDir = join(tempCwd, 'docs');
+      // stdin stays an OPEN pipe (never written or closed): a live MCP
+      // session is exactly that - the stdio transport's stdin `data`
+      // listener then keeps the child alive until the signal arrives
+      // (a null stdin would drain the event loop and exit the child on
+      // its own, before this test could say anything).
+      const child = spawn(process.execPath, [DIST_ENTRY], {
+        cwd: tempCwd,
+        env: { ...process.env, BPMN_MCP_DOCS_DIR: docsDir },
+        stdio: ['pipe', 'ignore', 'pipe'],
+      });
+      let stderr = '';
+      child.stderr.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+
+      // Wait for the entry point to finish starting (the shutdown
+      // handlers are installed before the 'started' log line).
+      await new Promise<void>((resolveWait, rejectWait) => {
+        let settled = false;
+        const finish = (error?: Error): void => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearInterval(interval);
+          clearTimeout(timeout);
+          child.off('close', onEarlyClose);
+          if (error !== undefined) {
+            rejectWait(error);
+          } else {
+            resolveWait();
+          }
+        };
+        const interval = setInterval(() => {
+          if (stderr.includes('"event":"started"')) {
+            finish();
+          }
+        }, 50);
+        const timeout = setTimeout(() => {
+          child.kill('SIGKILL');
+          finish(new Error(`the child did not start within 20s; stderr: ${stderr}`));
+        }, 20_000);
+        const onEarlyClose = (): void => {
+          if (stderr.includes('"event":"started"')) {
+            finish();
+          } else {
+            finish(new Error(`the child exited before starting; stderr: ${stderr}`));
+          }
+        };
+        child.on('close', onEarlyClose);
+        if (stderr.includes('"event":"started"')) {
+          finish();
+        }
+      });
+
+      child.kill('SIGTERM');
+      const { code, signal } = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+        (resolveExit, rejectExit) => {
+          const killTimer = setTimeout(() => {
+            child.kill('SIGKILL');
+            rejectExit(new Error('the child did not exit after SIGTERM (the shutdown wiring is broken)'));
+          }, 10_000);
+          child.on('close', (exitCode, exitSignal) => {
+            clearTimeout(killTimer);
+            resolveExit({ code: exitCode, signal: exitSignal });
+          });
+        },
+      );
+
+      // A clean exit: code 0, not a signal death.
+      expect({ code, signal }).toEqual({ code: 0, signal: null });
+
+      // The shutdown handler ran (the log file carries the event, the
+      // same pino-roll flush wait as the log-leg above).
+      await new Promise((resolveFlush) => setTimeout(resolveFlush, 300));
+      const logsDir = join(tempCwd, 'logs');
+      const logContent = readdirSync(logsDir)
+        .map((file) => readFileSync(join(logsDir, file), 'utf8'))
+        .join('\n');
+      expect(logContent).toContain('"event":"shutting-down"');
+      expect(logContent).toContain('"cause":"SIGTERM"');
+    }, 40_000);
   });
 });

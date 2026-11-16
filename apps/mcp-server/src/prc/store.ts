@@ -77,7 +77,12 @@ import {
  * lint core (`lint.ts`) owns bpmnlint the way `moddle.ts` owns
  * bpmn-moddle, and its derived-reference backfill (`incoming`/
  * `outgoing`, `$parent`) restores the tree, so the cached tree
- * stays byte-stable across a validation.
+ * stays byte-stable across a validation. `readProcessXml` (feat-20)
+ * is read-only in both cases: a draft is serialized from its
+ * in-memory tree (no file access, no checksum, `outOfBandReRead`
+ * false); a registered process is serialized after the conditional
+ * re-read -- it is the preview server's `/processes/<uuid>` endpoint
+ * data source (QA 4.0010/1.0080).
  *
  * The operations return plain typed result objects (no MCP SDK
  * types -- the adapter layer maps them to tool results).
@@ -253,6 +258,25 @@ export interface ValidateFailure {
 }
 
 export type ValidateResult = ValidateSuccess | ValidateFailure;
+
+/** The `readProcessXml` success result (feat-20 REQ-002): the process's current XML. */
+export interface ReadProcessXmlSuccess {
+  ok: true;
+  /** The process UUID. */
+  uuid: string;
+  /** The process's current BPMN 2.0 XML (formatted). */
+  xml: string;
+  /** Whether the conditional re-read detected an out-of-band change (REQ-004; false for drafts). */
+  outOfBandReRead: boolean;
+}
+
+/** The `readProcessXml` failure result (a store failure). */
+export interface ReadProcessXmlFailure {
+  ok: false;
+  error: PrcError;
+}
+
+export type ReadProcessXmlResult = ReadProcessXmlSuccess | ReadProcessXmlFailure;
 
 /**
  * The minimal structural logger the store needs. A pino `Logger`
@@ -797,6 +821,75 @@ export class PrcStore {
       'validated a registered BPMN process',
     );
     return { ok: true, uuid, findings: linted.findings, outOfBandReRead: reRead };
+  }
+
+  /**
+   * The `readProcessXml` operation (feat-20 REQ-002): serves the
+   * process's current BPMN 2.0 XML -- the data source of the preview
+   * server's `/processes/<uuid>` endpoint (QA 4.0010, 1.0080).
+   * Read-only: nothing is written, and the only possible cache effect
+   * is the conditional re-read's own update. Resolves the UUID
+   * DRAFT-FIRST: a session draft is serialized from its in-memory
+   * tree (no file access, no checksum -- there is nothing to hash;
+   * `outOfBandReRead` is false); a registered process is serialized
+   * after the conditional re-read (REQ-004). An unregistered UUID is
+   * a structured error in every directory state; a serialization
+   * failure is `not-bpmn`; a filesystem failure is `read-failed`
+   * (the cache stays untouched, as in the siblings).
+   *
+   * @param uuid - The process UUID (a draft or a registered process).
+   */
+  async readProcessXml(uuid: string): Promise<ReadProcessXmlResult> {
+    precondition(uuid.length > 0, 'the process uuid must be a non-empty string');
+    const draft = this.drafts.get(uuid);
+    if (draft !== undefined) {
+      let xml: string;
+      try {
+        xml = await serializeBpmn(draft.tree);
+      } catch (error) {
+        if (error instanceof BpmnParseError) {
+          return { ok: false, error: { code: 'not-bpmn', message: error.message } };
+        }
+        throw error;
+      }
+      this.logger.info(
+        { event: 'prc-read-xml', uuid, outOfBandReRead: false },
+        'read the XML of a session-draft BPMN process (in memory only)',
+      );
+      return { ok: true, uuid, xml, outOfBandReRead: false };
+    }
+
+    const entry = this.cache.get(uuid);
+    if (entry === undefined) {
+      // The uuid is user input: single-line it before interpolation
+      // (feat-18 review finding I3, defense-in-depth: the preview
+      // server's own layer enforces the path shape).
+      return {
+        ok: false,
+        error: { code: 'process-not-registered', message: `process ${oneLine(uuid)} is not registered` },
+      };
+    }
+
+    let reRead: boolean;
+    let current: CacheEntry | undefined;
+    let xml: string;
+    try {
+      reRead = (await this.ensureCurrentTree(uuid, entry.path)).reRead;
+      current = this.cache.get(uuid);
+      precondition(current !== undefined, `process ${uuid} must stay registered during xml read`);
+      xml = await serializeBpmn(current.tree);
+    } catch (error) {
+      if (error instanceof BpmnParseError) {
+        return { ok: false, error: { code: 'not-bpmn', message: error.message } };
+      }
+      return { ok: false, error: this.toIoError(error, 'read-failed', entry.path) };
+    }
+
+    this.logger.info(
+      { event: 'prc-read-xml', uuid, path: current.path, outOfBandReRead: reRead },
+      'read the XML of a registered BPMN process',
+    );
+    return { ok: true, uuid, xml, outOfBandReRead: reRead };
   }
 
   /** Dispatches an editing operation onto a tree (the change op's core leg). */
