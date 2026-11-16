@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-07T08:56:51.646+01:00'
 id: feat-18-parse-tool
-status: review
+status: done
 type: feat
-updated: '2026-11-09T06:56:50.083+01:00'
+updated: '2026-11-16T22:40:18.262+01:00'
 version: 1.0.0
 ---
 
@@ -151,6 +151,10 @@ legs). Status remains review; PR #22 open.
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-16 22:24:30.860+01:00 - PR #22 merged, feature done
+
+PR #22 (branch `feat-18-parse-tool`) was merged into `dev` on 2026-11-09 (commit `6c43dce`), closing the plan's remaining PR leg. All acceptance criteria were verified during Phases 100 to 130 and the post-implementation review (see the update entries below). Status moved from `review` to `done`; the branch `feat-18-parse-tool` remains on origin.
 
 #### 2026-11-09T05:56:50.083Z - Phase 130: post-implementation review fixes (I1-I4 addressed; G3 resolved per option (a): pin actual behavior, correct the JSDoc)
 
