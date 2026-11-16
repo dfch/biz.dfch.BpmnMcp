@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-07T08:55:38.554+01:00'
 id: feat-17-create-change-tools
-status: review
+status: done
 type: feat
-updated: '2026-11-07T09:56:22.910+01:00'
+updated: '2026-11-16T22:40:03.910+01:00'
 version: 1.0.0
 ---
 
@@ -142,6 +142,10 @@ order.
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-16 22:24:30.860+01:00 - PR #21 merged, feature done
+
+PR #21 (branch `feat-17-create-change-tools`) was merged into `dev` on 2026-11-08 (commit `1b4c5b9`), closing the plan's remaining PR leg. All acceptance criteria were verified during Phases 100 to 140 and the post-implementation review (see the update entries below). Status moved from `review` to `done`; the branch `feat-17-create-change-tools` remains on origin.
 
 #### 2026-11-08T14:25:45.000Z - Phase 140 complete (review finding I2: sub-process family reachability in the editing walk)
 
