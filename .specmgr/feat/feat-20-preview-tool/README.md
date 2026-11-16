@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-07T09:00:42.381+01:00'
 id: feat-20-preview-tool
-status: review
+status: done
 type: feat
-updated: '2026-11-16T10:33:00.000+01:00'
+updated: '2026-11-16T22:40:46.936+01:00'
 version: 1.0.0
 ---
 
@@ -207,6 +207,10 @@ unregistered-uuid leg (G1) and the byte-identical watermark pin
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-16 22:24:30.860+01:00 - PR #24 merged, feature done
+
+PR #24 (branch `feat-20`) was merged into `dev` on 2026-11-16 (commit `348d592`), closing the plan's remaining PR leg. All acceptance criteria were verified during Phases 100 to 130 and the post-implementation review (see the update entries below; the two fixed-port spawn legs report themselves as skipped in this environment, smoke-verified on a scratch copy). Status moved from `review` to `done`; the branch `feat-20` remains on origin.
 
 #### 2026-11-16T10:58:06.000+01:00 - Phase 130: post-implementation review fixes (E1, G1, G2, D1, D2, I1-I5 closed)
 
