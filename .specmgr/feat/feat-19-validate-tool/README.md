@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-07T08:58:41.011+01:00'
 id: feat-19-validate-tool
-status: review
+status: done
 type: feat
-updated: '2026-11-10T03:02:52.332+01:00'
+updated: '2026-11-16T22:40:32.606+01:00'
 version: 1.0.0
 ---
 
@@ -182,6 +182,10 @@ per the spike verdict).
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-16 22:24:30.860+01:00 - PR #23 merged, feature done
+
+PR #23 (branch `feat-19`) was merged into `dev` on 2026-11-11 (commit `fe334e4`), closing the plan's remaining PR leg. All acceptance criteria were verified during Phases 100 to 130 and the post-implementation review (see the update entries below). Status moved from `review` to `done`; the branch `feat-19` remains on origin.
 
 #### 2026-11-10T11:50:34.000+01:00 - Phase 130: post-implementation review fixes (G1/G2, I1-I4 closed)
 
