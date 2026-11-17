@@ -4,7 +4,7 @@ created: '2026-11-01T13:06:50.041+01:00'
 id: feat-11-npm-publish-mcp-registry
 status: planning
 type: feat
-updated: '2026-11-17T07:10:18.674+01:00'
+updated: '2026-11-17T15:08:17.433+01:00'
 version: 1.0.0
 ---
 
@@ -106,12 +106,12 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 #### Phase 100: The publishable npm package
 
-- [ ] Task 100.100: Make `apps/mcp-server/package.json` publishable per REQ-001: drop `private`, add `files` (`dist`, `logging.json`), `description`, `keywords`, `repository`; keep `license`/`bin`/`engines` (the license field stays gate-asserted).
-- [ ] Task 100.110: Create `apps/mcp-server/scripts/prepare-publish.mjs` (SPDX header) implementing the REQ-002 `prepack` pipeline (build → shebang + exec bit on `dist/index.js` → root `LICENSE` copied into the package directory), wired as the `prepack` script, with unit tests (shebang idempotence, LICENSE byte-identity, sources untouched).
-- [ ] Task 100.120: Add the tarball-set test leg: `npm pack` contents equal exactly the REQ-003 set (fails on any extra or missing file).
-- [ ] Task 100.130: Add the clean-environment packed-artifact leg: install the tarball into a temporary prefix, launch the `bin`, MCP handshake asserts exactly the seven Stage 1 tools (`import`, `export`, `create`, `change`, `parse`, `validate`, `preview`) — matching the set registered on `dev` (see, e.g., the in-process tool list in `apps/mcp-server/src/server.ts`), so a future tool-surface change updates one source, not this spec (REQ-004).
-- [ ] Task 100.140: Write the package `README.md`: usage (the `npx` and `node` invocations), the MCP client config snippet, the five `BPMN_MCP_*` variables, the node >= 26 requirement (per DEC 5185d651-7283-4b1d-87e0-272795d15edf), the AGPL note, and the bpmn.io attribution-watermark clause (the viewer ships as a dependency; the watermark must stay visible on rendered canvases per AGENTS.md's licensing note).
-- [ ] Task 100.150: Run all gates from the repository root (`npm ci`, `lint`, `format:check`, `build`, `test --coverage`, `audit`, `uvx pre-commit run --all-files`), fixing findings.
+- [x] Task 100.100: Make `apps/mcp-server/package.json` publishable per REQ-001: drop `private`, add `files` (`dist`, `logging.json`), `description`, `keywords`, `repository`; keep `license`/`bin`/`engines` (the license field stays gate-asserted).
+- [x] Task 100.110: Create `apps/mcp-server/scripts/prepare-publish.mjs` (SPDX header) implementing the REQ-002 `prepack` pipeline (build → shebang + exec bit on `dist/index.js` → root `LICENSE` copied into the package directory), wired as the `prepack` script, with unit tests (shebang idempotence, LICENSE byte-identity, sources untouched).
+- [x] Task 100.120: Add the tarball-set test leg: `npm pack` contents equal exactly the REQ-003 set (fails on any extra or missing file).
+- [x] Task 100.130: Add the clean-environment packed-artifact leg: install the tarball into a temporary prefix, launch the `bin`, MCP handshake asserts exactly the seven Stage 1 tools (`import`, `export`, `create`, `change`, `parse`, `validate`, `preview`) — matching the set registered on `dev` (see, e.g., the in-process tool list in `apps/mcp-server/src/server.ts`), so a future tool-surface change updates one source, not this spec (REQ-004).
+- [x] Task 100.140: Write the package `README.md`: usage (the `npx` and `node` invocations), the MCP client config snippet, the five `BPMN_MCP_*` variables, the node >= 26 requirement (per DEC 5185d651-7283-4b1d-87e0-272795d15edf), the AGPL note, and the bpmn.io attribution-watermark clause (the viewer ships as a dependency; the watermark must stay visible on rendered canvases per AGENTS.md's licensing note).
+- [x] Task 100.150: Run all gates from the repository root (`npm ci`, `lint`, `format:check`, `build`, `test --coverage`, `audit`, `uvx pre-commit run --all-files`), fixing findings.
 
 #### Phase 110: The MCP Registry manifest and drift gate
 
@@ -137,7 +137,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 ### Current Status
 
-**As of 2026-11-17**: Plan re-baselined against repository state — the Stage 1 tool surface is complete (feat-17/18/19/20, PR #21–#24, all `done`), the `engines` floor is `node >= 26` per DEC 5185d651-7283-4b1d-87e0-272795d15edf, and the manifest already carries `0.1.0`. The 2026-11-07 partial update (commit `e07c184`, feat-12/PR #13 — the DEC 5185d651 citation in Task 100.140, the engines reference) is recorded retroactively below. Awaiting implementation approval for Phase 100.
+**As of 2026-11-17**: Phase 100 (the publishable npm package) implemented — the manifest is publishable per REQ-001, the `prepack` pipeline (build → shebang + exec bit on `dist/index.js` → root `LICENSE` into the package directory) runs with unit tests, the tarball-set and clean-environment packed-artifact legs pin the REQ-003 file set and the REQ-004 tool surface, and the package `README.md` covers usage, client config, the five `BPMN_MCP_*` variables, the `node >= 26` floor, the AGPL note, and the bpmn.io watermark clause (ACC-002/ACC-003/ACC-004/ACC-009); all gates green (the plan's re-baseline and the feat-12 partial update remain recorded below). Next: Phase 110 (the MCP Registry manifest and drift gate).
 
 ### Blockers
 
@@ -146,6 +146,10 @@ None for Phases 100–120. The user-side prerequisites (npm account, `NPM_TOKEN`
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-17 14:45:21.208+01:00 - Phase 100 implemented: the publishable npm package
+
+Implemented Phase 100 (Tasks 100.100–100.150): Task 100.100 made `apps/mcp-server/package.json` publishable per REQ-001 (dropped `private`; added `files` (`dist`, `logging.json`), `description`, the `mcp`/`model-context-protocol`/`bpmn`/`bpmn-io` `keywords`, and the git `repository` — the gate-asserted `license`, `bin`, and `engines` (`node >= 26`) kept); Task 100.110 added `scripts/prepare-publish.mjs` (SPDX header, wired as the `prepack` script: `npm run build` → shebang + exec bit on `dist/index.js` only → repository-root `LICENSE` copied byte-identically into the package directory; no source file touched) plus 9 unit tests (shebang idempotence, LICENSE byte-identity, sources untouched, and a missing-LICENSE negative leg); Task 100.120 added the tarball-set leg in `test/mcp-server.packed.test.ts` (`npm pack` contents equal exactly the REQ-003 set — `package.json`, the package `README.md`, `LICENSE`, `dist/**` with the shebang-ed `index.js`, `logging.json` — failing on any extra or missing file, with the `dist/**` half derived independently from the `src/` tree); Task 100.130 added the clean-environment packed-artifact leg (the tarball installs into a fresh temporary prefix from the registry, the installed `bin` launches directly — proving shebang + exec bit end to end — and the stdio MCP handshake lists exactly the tool set registered on `dev`, derived in-process from `src/server.ts`, so a future tool-surface change updates one source, not this spec; today that set is the seven Stage 1 tools); Task 100.140 wrote the package `README.md` (the `npx`/`node` invocations, the MCP client config snippet, the five `BPMN_MCP_*` variables with defaults and the three-tier precedence, the `node >= 26` requirement per DEC 5185d651-7283-4b1d-87e0-272795d15edf, the AGPL-3.0-only note, and the bpmn.io attribution-watermark clause per AGENTS.md's licensing note); Task 100.150 ran all gates from the repository root — `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, `npm test -- --coverage` (21 files, 377 passed / 2 skipped, the skipped being the spawn suite's pre-existing port-8080-occupied conditional legs), `npm audit` (only the documented residual archunit → minimatch 10.2.6, GHSA-g3hv-75wg-m249, QA 7.0030 — no new findings, `package-lock.json` untouched), `uvx pre-commit run --all-files` — all green. One supporting decision, settled in this phase: `vitest.config.ts` now sets `fileParallelism: false` (test files run serially) because in the default parallel mode the packed leg's `npm pack` (whose `prepack` re-emits `dist/`) plus its registry install overlapped the spawn suite's launched servers and produced a rare (1 in 46 full runs) spawn-suite flake, while the pre-change baseline was stable (15/15); under serial execution the suite is green across 30 consecutive full runs (~25 s each), and the stale "parallel workers" comment in `mcp-server.test.ts` was updated to match.
 
 #### 2026-11-17 05:38:59.000+01:00 - Re-baselined against repository state
 

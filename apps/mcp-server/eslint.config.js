@@ -12,6 +12,15 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // The `prepack` pipeline script (feat-11 Task 100.110): plain
+    // `.mjs`, outside the type-checked `src/`/`test/` sets -- declare
+    // the one Node global it uses (`process`).
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly' },
+    },
+  },
+  {
     files: ['src/**/*.ts', 'test/**/*.ts'],
     languageOptions: {
       parserOptions: {

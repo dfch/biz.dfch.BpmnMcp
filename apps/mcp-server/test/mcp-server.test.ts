@@ -46,9 +46,9 @@ const UUID_V4_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[
 /**
  * Frees an ephemeral test port (a probe listener on port 0). The
  * in-memory server's preview instance never uses the fixed 8080:
- * test files run in parallel workers, and the spawn suite's
- * fixed-port legs already own 8080 (the `mcp-server.test.ts`
- * sibling-file convention, feat-20 Phase 110).
+ * the spawn suite's fixed-port legs own 8080, and test files run
+ * serially (`fileParallelism: false`, feat-11), so an ephemeral port
+ * is the convention either way (feat-20 Phase 110).
  */
 async function getFreePort(): Promise<number> {
   const probe = createNetServer();
