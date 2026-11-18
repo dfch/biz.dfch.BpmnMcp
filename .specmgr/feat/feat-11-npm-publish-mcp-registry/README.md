@@ -4,7 +4,7 @@ created: '2026-11-01T13:06:50.041+01:00'
 id: feat-11-npm-publish-mcp-registry
 status: planning
 type: feat
-updated: '2026-11-18T13:33:51.094+01:00'
+updated: '2026-11-18T14:04:01.823+01:00'
 version: 1.0.0
 ---
 
@@ -124,7 +124,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 - [x] Task 120.100: Create `.github/workflows/publish.yml` per REQ-007 (SPDX header, SHA-pinned actions, the gate job with the tag/version consistency check, the npm publish job, the GitHub Release job, the MCP Registry job with `id-token: write`).
 - [x] Task 120.110: Create `CHANGELOG.md` (Keep-a-Changelog, `Unreleased` first) and document the release procedure in `CONTRIBUTING.md` per REQ-008 (including the dev→main fast-forward-only merge and the tag-on-`main` step, per the resolved decision (3)).
-- [ ] Task 120.120: Run the full quality gate from the repository root and open the pull request (the orchestrator opens it after review, per house convention).
+- [x] Task 120.120: Run the full quality gate from the repository root and open the pull request (the orchestrator opens it after review, per house convention).
 
 #### Phase 130: The first publish (executed after the PR merges)
 
@@ -137,7 +137,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 ### Current Status
 
-**As of 2026-11-18**: Phase 120 (the tag-driven publish pipeline) implemented — `.github/workflows/publish.yml` per REQ-007/ACC-006 (the `v*` tag trigger; the four-job linear chain `gates` → `npm-publish` → `github-release` → `mcp-registry`; the gate job re-running ci.yml's five root commands plus the tag/version consistency check that fails the workflow before anything is published; the `npm publish` of the `biz.dfch.bpmnmcp` workspace with the `NPM_TOKEN` secret; the GitHub Release with the `npm pack` tarball per the sibling's `gh` pattern; the MCP Registry job with the sibling's `mcp-publisher` steps verbatim and `permissions: id-token: write, contents: write`), `CHANGELOG.md` (Keep-a-Changelog, `Unreleased` first, recording what the first public release v0.1.0 will contain), and the release procedure as the new final `CONTRIBUTING.md` section 8 per REQ-008 (the `Unreleased` → dated move, the version bump in the single source of truth, the `chore(release)` commit, the dev→main fast-forward-only merge, the tag-on-`main`, the tag push; the first release needs no bump); all phase-end gates green (`npm audit` shows exactly the two documented residuals). The pull request (Task 120.120's second half) is opened by the orchestrator after this phase's review; then Phase 130 (the first publish) follows. The Phase 110 status and the earlier history remain recorded in the Updates log below.
+**As of 2026-11-18**: Phase 120 (the tag-driven publish pipeline) implemented — `.github/workflows/publish.yml` per REQ-007/ACC-006 (the `v*` tag trigger; the four-job linear chain `gates` → `npm-publish` → `github-release` → `mcp-registry`; the gate job re-running ci.yml's five root commands plus the tag/version consistency check that fails the workflow before anything is published; the `npm publish` of the `biz.dfch.bpmnmcp` workspace with the `NPM_TOKEN` secret; the GitHub Release with the `npm pack` tarball per the sibling's `gh` pattern; the MCP Registry job with the sibling's `mcp-publisher` steps verbatim and `permissions: id-token: write, contents: write`), `CHANGELOG.md` (Keep-a-Changelog, `Unreleased` first, recording what the first public release v0.1.0 will contain), and the release procedure as the new final `CONTRIBUTING.md` section 8 per REQ-008 (the `Unreleased` → dated move, the version bump in the single source of truth, the `chore(release)` commit, the dev→main fast-forward-only merge, the tag-on-`main`, the tag push; the first release needs no bump); all phase-end gates green (`npm audit` shows exactly the two documented residuals). The pull request (Task 120.120) was opened by the orchestrator as PR #28 (base `dev`) after this phase's review; Phase 130 (the first publish) executes after the PR merges. The Phase 110 status and the earlier history remain recorded in the Updates log below.
 
 ### Blockers
 
@@ -146,6 +146,10 @@ None for Phases 100–120. The user-side prerequisites (npm account, `NPM_TOKEN`
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-18 14:04:01.823+01:00 - PR #28 opened (Task 120.120 complete)
+
+After the Phase 120 review and commit (`7b5812c`), the orchestrator pushed `feat-11` and opened the pull request as PR #28 (https://github.com/dfch/biz.dfch.BpmnMcp/pull/28, base `dev`) — Task 120.120 is now complete. Phase 130 (the first publish) executes after the PR merges, gated on the user-side prerequisites (npmjs account + 2FA, the `NPM_TOKEN` repository secret, the MCP Registry GitHub App for OIDC) per the plan.
 
 #### 2026-11-18 11:50:27.189+01:00 - Phase 120 implemented: the tag-driven publish pipeline
 
