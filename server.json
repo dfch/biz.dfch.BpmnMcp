@@ -1,0 +1,54 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.dfch/biz-dfch-bpmnmcp",
+  "title": "BpmnMcp",
+  "description": "A Model Context Protocol (MCP) server for agent-and-human BPMN 2.0 process modeling.",
+  "websiteUrl": "https://github.com/dfch/biz.dfch.BpmnMcp#readme",
+  "repository": {
+    "url": "https://github.com/dfch/biz.dfch.BpmnMcp",
+    "source": "github",
+    "id": "1429974892"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "biz.dfch.bpmnmcp",
+      "version": "0.1.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "BPMN_MCP_DOCS_DIR",
+          "description": "Documents root, resolved against the working directory; registered BPMN processes live under its prc subdirectory.",
+          "default": "./docs",
+          "format": "filepath"
+        },
+        {
+          "name": "BPMN_MCP_LOG_FILE",
+          "description": "Rolling log file base path (no extension), relative to the working directory.",
+          "default": "logs/server"
+        },
+        {
+          "name": "BPMN_MCP_LOG_LEVEL",
+          "description": "Minimum pino log level: fatal, error, warn, info, debug, or trace.",
+          "default": "info"
+        },
+        {
+          "name": "BPMN_MCP_LOG_ROTATE",
+          "description": "Log rotation frequency: daily, hourly, or a numeric string read as a number of milliseconds.",
+          "default": "daily"
+        },
+        {
+          "name": "BPMN_MCP_LOG_RETAIN",
+          "description": "How many log files to keep in total, the active file included.",
+          "default": "7",
+          "format": "number"
+        }
+      ]
+    }
+  ]
+}
