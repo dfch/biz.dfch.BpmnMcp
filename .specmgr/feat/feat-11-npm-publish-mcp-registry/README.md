@@ -4,7 +4,7 @@ created: '2026-11-01T13:06:50.041+01:00'
 id: feat-11-npm-publish-mcp-registry
 status: planning
 type: feat
-updated: '2026-11-18T05:25:45.918+01:00'
+updated: '2026-11-18T06:40:53.107+01:00'
 version: 1.0.0
 ---
 
@@ -30,7 +30,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 ### Acceptance Criteria
 
-- [ ] ACC-001: On a clean clone, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass from the repository root, `npm audit` reports no vulnerabilities other than the documented residual (archunit → minimatch 10.2.6, GHSA-g3hv-75wg-m249, QA 7.0030), and `uvx pre-commit run --all-files` passes.
+- [ ] ACC-001: On a clean clone, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass from the repository root, `npm audit` reports no vulnerabilities other than the two documented residuals (archunit → minimatch 10.2.6, GHSA-g3hv-75wg-m249; and picomatch ≤ 4.0.7, GHSA-fc5q-39xc-vjpf — dev-tooling chain only, no patched version as of 2026-11-17; both tracked in QA 7.0030), and `uvx pre-commit run --all-files` passes.
 - [ ] ACC-002: `npm pack` produces a tarball whose file list is exactly the REQ-003 set; the test leg fails on any extra or missing file.
 - [ ] ACC-003: After `prepack`, `dist/index.js` starts with `#!/usr/bin/env node` and carries the exec bit; `src/index.ts` is byte-unchanged (the license gate still passes); the package-directory `LICENSE` is byte-identical to the repository root's.
 - [ ] ACC-004: The clean-environment packed-artifact leg installs the tarball into a temporary prefix, launches the `bin`, and the MCP handshake over stdio lists exactly the seven Stage 1 tools (`import`, `export`, `create`, `change`, `parse`, `validate`, `preview`) — matching the set registered on `dev` (see, e.g., the in-process tool list in `apps/mcp-server/src/server.ts`), so a future tool-surface change updates one source, not this spec.
@@ -58,7 +58,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 - SSE / streamable-http transports and any `remotes` manifest entries: the `stdio`-only exclusion stays (the manifest declares `stdio` only); the `preview` feature (feat-20, done) delivered a browser viewer only (no additional MCP transport; the preview server binds 127.0.0.1), so Stage 1 is complete and SSE/streamable-http (if ever pursued) is an open follow-up without an owning feature.
 - Docker/OCI package entries and MCPB bundles.
 - Private or test registries (npm has no TestPyPI; the staging legs are the `--dry-run`/`npm pack` test legs and the clean-environment install).
-- Remediating the documented archunit → minimatch 10.2.6 audit residual (tracked in QA 7.0030 until a minimatch-11-compatible archunit release ships).
+- Remediating the documented audit residuals: archunit → minimatch 10.2.6 (GHSA-g3hv-75wg-m249; tracked in QA 7.0030 until a minimatch-11-compatible archunit release ships) and picomatch ≤ 4.0.7 (GHSA-fc5q-39xc-vjpf, dev-tooling chain only; tracked in QA 7.0030 until a fixed picomatch ships and the toolchain upgrades past it).
 - The implementation of the Stage 1 tools (`create`, `change`, `validate`, `parse`, `preview`): already complete on `dev` (feat-17/18/19/20, all `done`); this feature only packages and publishes.
 
 ### Dependencies
@@ -137,7 +137,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 ### Current Status
 
-**As of 2026-11-17**: Phase 110 (the MCP Registry manifest and drift gate) implemented — the `2025-12-11` schema is vendored as an offline test fixture (source URL + fetch date recorded in the drift test, whose `$id` pin detects a swapped copy), the repository-root `server.json` carries the registry name per the resolved decision (1), the npm package entry, and the five `BPMN_MCP_*` variables with the `config.ts` defaults (REQ-005), and the drift test (REQ-006/ACC-005) validates the manifest offline against the vendored schema, pins `identifier`/`version` ↔ `package.json`, asserts the bidirectional env-var set equality and the structural invariants over a comment/string-blanked scanner with the three-shape default classifier, and carries six negative legs on synthetic trees; all gates green except `npm audit`, where a newly updated picomatch advisory (GHSA-fc5q-39xc-vjpf, dev-tooling-only, no fixed version) surfaced mid-phase alongside the documented minimatch residual — flagged for orchestrator/user judgment (the earlier Phase 100 status and the plan's re-baseline remain recorded below). Next: Phase 120 (the tag-driven publish pipeline).
+**As of 2026-11-17**: Phase 110 (the MCP Registry manifest and drift gate) implemented — the `2025-12-11` schema is vendored as an offline test fixture (source URL + fetch date recorded in the drift test, whose `$id` pin detects a swapped copy), the repository-root `server.json` carries the registry name per the resolved decision (1), the npm package entry, and the five `BPMN_MCP_*` variables with the `config.ts` defaults (REQ-005), and the drift test (REQ-006/ACC-005) validates the manifest offline against the vendored schema, pins `identifier`/`version` ↔ `package.json`, asserts the bidirectional env-var set equality and the structural invariants over a comment/string-blanked scanner with the three-shape default classifier, and carries six negative legs on synthetic trees; all gates green except `npm audit`, where a newly updated picomatch advisory (GHSA-fc5q-39xc-vjpf, dev-tooling-only, no fixed version) surfaced mid-phase alongside the documented minimatch residual — resolved 2026-11-18 by the user: the documented-residual list is extended (ACC-001, Out of Scope) and the picomatch residual tracked in QA 7.0030 (the earlier Phase 100 status and the plan's re-baseline remain recorded below). Next: Phase 120 (the tag-driven publish pipeline).
 
 ### Blockers
 
@@ -146,6 +146,10 @@ None for Phases 100–120. The user-side prerequisites (npm account, `NPM_TOKEN`
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-18 06:40:53.107+01:00 - Documented audit-residual list extended (user decision)
+
+On 2026-11-18 the user resolved the Phase 110 audit flag by extending the documented-residual list (option 1: amend now, docs-only) rather than deferring to the Phase 120 gate: ACC-001 and the Out-of-Scope remediation bullet now document both residuals (minimatch GHSA-g3hv-75wg-m249; picomatch ≤ 4.0.7 GHSA-fc5q-39xc-vjpf — dev-tooling chain only, no patched version as of 2026-11-17/18), and the implementation Q&A (qa 818fac76, QA 7.0030) gains the matching "Dependency audit note (picomatch)". Facts recorded: the advisory was published 2026-10-19 (before the Phase 100 gate) but its advisory-DB record was updated 2026-11-17T15:56:44Z mid-Phase 110, so it surfaced as an environmental change, not a dependency change of any feat-11 phase (Phase 110's only dependency delta is dev-only ajv); `npm audit fix --force` is rejected (breaking downgrades of the pinned toolchain), per the minimatch note's targeted-remediation precedent.
 
 #### 2026-11-17 20:45:32.611+01:00 - Phase 110 implemented: the MCP Registry manifest and drift gate
 

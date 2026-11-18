@@ -4,7 +4,7 @@ created: '2026-10-23T10:42:55.525+02:00'
 id: 818fac76-96fb-4e3c-acb8-e5520fab5913
 status: draft
 type: qa
-updated: '2026-10-24T14:53:09.961+02:00'
+updated: '2026-11-18T06:40:53.107+01:00'
 version: 1.0.0
 ---
 
@@ -1442,6 +1442,8 @@ repository's own committed code -- no untrusted input reaches
 `minimatch`. `npm audit fix --force` would downgrade `archunit` to
 2.1.31 (a breaking change) -- rejected, per the
 targeted-remediation precedent of feat-1's Phase 130.
+
+**Dependency audit note (picomatch)**: the advisory GHSA-fc5q-39xc-vjpf (high, "picomatch vulnerable to ReDoS through single-branch repeated extglobs") covers `picomatch <= 4.0.7`; no patched version exists as of 2026-11-18 (`first_patched_version: null`). It was published 2026-10-19 — before feat-11's Phase 100 gate, whose `npm audit` reported only the minimatch residual — but its advisory-database record was updated 2026-11-17T15:56:44Z, mid-Phase 110, so it surfaced as an environmental change rather than a dependency change of any feat-11 phase (Phase 110's only dependency delta is the dev-only `ajv`). The affected chain (verified with `npm ls picomatch`) is dev-tooling-only: `archunit` → `plantuml-parser` → `fast-glob` → `micromatch` → `picomatch` 2.3.2, and `vitest` 5 → `picomatch` 4.0.7 (deduped via `vite`, `fdir`, `tinyglobby`) — nothing in the published package's runtime dependency tree (`@modelcontextprotocol/sdk`, `bpmn-moddle`, `bpmnlint`, `bpmn-js`, `pino`, `pino-roll`, `zod`). No in-phase fix exists: `npm audit fix --force` would downgrade `vitest` 5.1.0 → 3.1.4 and `archunit` 2.5.4 → 2.1.31 (breaking changes against the pinned toolchain) — rejected, per the same targeted-remediation precedent as the minimatch note above. The practical risk is low, as with the minimatch residual: the ReDoS path requires attacker-crafted glob patterns, and the dev-only consumers here receive glob inputs from this repository's own committed code — no untrusted input reaches `picomatch`. Tracked here, alongside the minimatch residual (and recorded in the feat-11 plan's ACC-001 and Out-of-Scope bullet, extended 2026-11-18 at the user's decision) until a fixed `picomatch` (> 4.0.7) ships and the toolchain upgrades past it.
 
 ## Flexibility
 
