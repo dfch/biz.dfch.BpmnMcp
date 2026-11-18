@@ -4,7 +4,7 @@ created: '2026-11-01T13:06:50.041+01:00'
 id: feat-11-npm-publish-mcp-registry
 status: planning
 type: feat
-updated: '2026-11-17T15:08:17.433+01:00'
+updated: '2026-11-18T05:25:45.918+01:00'
 version: 1.0.0
 ---
 
@@ -115,10 +115,10 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 #### Phase 110: The MCP Registry manifest and drift gate
 
-- [ ] Task 110.100: Vendor the `2025-12-11` `server.schema.json` as a committed test fixture, with the source URL and fetch date recorded (offline validation, Design Notes).
-- [ ] Task 110.110: Create the repository-root `server.json` per REQ-005 (registry name per the resolved decision (1); the npm package entry; the five `environmentVariables` with the `config.ts` defaults).
-- [ ] Task 110.120: Implement the drift test per REQ-006 (schema validation, `identifier`/`version` ↔ `package.json`, the bidirectional env-var set equality with the structural invariants, at least one negative leg).
-- [ ] Task 110.130: Run all gates from the repository root, fixing findings.
+- [x] Task 110.100: Vendor the `2025-12-11` `server.schema.json` as a committed test fixture, with the source URL and fetch date recorded (offline validation, Design Notes).
+- [x] Task 110.110: Create the repository-root `server.json` per REQ-005 (registry name per the resolved decision (1); the npm package entry; the five `environmentVariables` with the `config.ts` defaults).
+- [x] Task 110.120: Implement the drift test per REQ-006 (schema validation, `identifier`/`version` ↔ `package.json`, the bidirectional env-var set equality with the structural invariants, at least one negative leg).
+- [x] Task 110.130: Run all gates from the repository root, fixing findings.
 
 #### Phase 120: The tag-driven publish pipeline
 
@@ -137,7 +137,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 ### Current Status
 
-**As of 2026-11-17**: Phase 100 (the publishable npm package) implemented — the manifest is publishable per REQ-001, the `prepack` pipeline (build → shebang + exec bit on `dist/index.js` → root `LICENSE` into the package directory) runs with unit tests, the tarball-set and clean-environment packed-artifact legs pin the REQ-003 file set and the REQ-004 tool surface, and the package `README.md` covers usage, client config, the five `BPMN_MCP_*` variables, the `node >= 26` floor, the AGPL note, and the bpmn.io watermark clause (ACC-002/ACC-003/ACC-004/ACC-009); all gates green (the plan's re-baseline and the feat-12 partial update remain recorded below). Next: Phase 110 (the MCP Registry manifest and drift gate).
+**As of 2026-11-17**: Phase 110 (the MCP Registry manifest and drift gate) implemented — the `2025-12-11` schema is vendored as an offline test fixture (source URL + fetch date recorded in the drift test, whose `$id` pin detects a swapped copy), the repository-root `server.json` carries the registry name per the resolved decision (1), the npm package entry, and the five `BPMN_MCP_*` variables with the `config.ts` defaults (REQ-005), and the drift test (REQ-006/ACC-005) validates the manifest offline against the vendored schema, pins `identifier`/`version` ↔ `package.json`, asserts the bidirectional env-var set equality and the structural invariants over a comment/string-blanked scanner with the three-shape default classifier, and carries six negative legs on synthetic trees; all gates green except `npm audit`, where a newly updated picomatch advisory (GHSA-fc5q-39xc-vjpf, dev-tooling-only, no fixed version) surfaced mid-phase alongside the documented minimatch residual — flagged for orchestrator/user judgment (the earlier Phase 100 status and the plan's re-baseline remain recorded below). Next: Phase 120 (the tag-driven publish pipeline).
 
 ### Blockers
 
@@ -146,6 +146,10 @@ None for Phases 100–120. The user-side prerequisites (npm account, `NPM_TOKEN`
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-17 20:45:32.611+01:00 - Phase 110 implemented: the MCP Registry manifest and drift gate
+
+Implemented Phase 110 (Tasks 110.100–110.130): Task 110.100 vendored the `2025-12-11` schema byte-true (Prettier-formatted) to `apps/mcp-server/test/fixtures/server.schema.json`, with the source URL and the 2026-11-17 fetch date recorded in the drift test's header and the test pinning the fixture's `$id` to the source URL (a swapped or differently re-fetched copy fails); Task 110.110 created the repository-root `server.json` per REQ-005 (name `io.github.dfch/biz-dfch-bpmnmcp` per the resolved decision (1), title `BpmnMcp`, the npm package entry — `registryBaseUrl` `https://registry.npmjs.org`, `identifier` `biz.dfch.bpmnmcp`, `runtimeHint` `npx`, `transport` stdio, no runtime/package arguments — and the five `environmentVariables` with the `config.ts` defaults and the app-README `## Environment variables` purpose wording); the top-level `description` was shortened to the app README/package description's opening clause ("A Model Context Protocol (MCP) server for agent-and-human BPMN 2.0 process modeling.") because the schema's `ServerDetail.description` carries `maxLength: 100` (a schema fact surfaced at gate time; the `environmentVariables` descriptions are unconstrained); Task 110.120 added `apps/mcp-server/test/server-json.test.ts` (14 tests, the npm/vitest analog of the sibling's `tests/test_server_json.py`): offline ajv validation against the vendored fixture, `packages[0].identifier`/both `version`s ↔ the app's `package.json`, the bidirectional env-var set equality with failure messages naming the specific missing and extra entries, the structural invariants (unique names, non-empty descriptions, `default` present iff the code reads the variable with a default over the documented three-shape classifier — nullish coalescing, the `BPMN_MCP_LOG_RETAIN` guarded-parse shape pinned explicitly, the `resolveSetting` fallback call), the five-name corpus pin, and six negative legs running the same assertion functions on synthetic temp trees (missing-from-manifest, extra-in-manifest, bare-read-vs-manifest-default, default-read-vs-defaultless-manifest, duplicate names, and the comment/string blanking pin); Task 110.130 ran all gates from the repository root — `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, `npm test -- --coverage` (22 files, 392 passed / 2 documented skips — the Phase 100 baseline plus the 14 new tests and the one license-header test the new `.ts` file generates), and `uvx pre-commit run --all-files` (7/7 hooks) all pass; `npm audit` shows the documented residual (archunit → minimatch 10.2.6, GHSA-g3hv-75wg-m249) plus a NEW high-severity picomatch advisory (GHSA-fc5q-39xc-vjpf, "picomatch <= 4.0.7", no patched version exists) whose advisory-database update landed 2026-11-17T15:56:44Z — mid-Phase 110, after the Phase 100 gate — and whose entire chain is dev-tooling-only (vitest/vite/fdir/tinyglobby, @typescript-eslint, archunit → plantuml-parser → fast-glob → micromatch; nothing in the published package's runtime dependencies): no in-phase fix exists (`npm audit fix --force` would downgrade vitest 5 → 3 and archunit 2.5.4 → 2.1.31, a breaking change contradicting the pinned toolchain), so it is flagged for orchestrator/user judgment (extend the documented-residual list ACC-001-style once a fixed picomatch ships — the frozen ACC-001 text is untouched here). Judgment: `ajv@^8.20.0` added as a devDependency of `apps/mcp-server` (the maintained major; 8.20.0 was already in the tree via the MCP SDK, so the lockfile delta is only the nested copy under `apps/mcp-server/node_modules` — the root keeps its eslint-hoisted 6.15.0 — plus its `json-schema-traverse`; dev-only, so the REQ-003 packed-tarball set is untouched); the named class import (`import { Ajv } from 'ajv'`) is the `NodeNext`-safe form for ajv's CJS build (its default import types as the module namespace under `verbatimModuleSyntax`).
 
 #### 2026-11-17 14:45:21.208+01:00 - Phase 100 implemented: the publishable npm package
 
