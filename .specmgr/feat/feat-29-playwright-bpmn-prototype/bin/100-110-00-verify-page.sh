@@ -5,8 +5,8 @@
 # Task 100.110 (ACC-001): proves the feat-29 prototype page server
 # (web/server.mjs, 127.0.0.1:8123) serves
 #   - GET / with the Modeler markers (the #canvas container, the
-#     Modeler bundle <script> tag, the BpmnModeler reference, the
-#     /bridge.js script tag),
+#     Modeler bundle <script> tag, the BpmnJS reference (the bundle's
+#     UMD global), the /bridge.js script tag),
 #   - the three pinned bpmn-js dist assets with 200 and sha256-
 #     identical bytes against the installed node_modules/bpmn-js/dist,
 #   - the served Modeler bundle holding the unmodified watermark
@@ -99,8 +99,8 @@ pass "the page holds the #canvas container"
 grep -q 'bpmn-modeler.production.min.js' "$TMP_DIR/page.html" || fail "the page is missing the Modeler bundle <script> tag"
 pass "the page references /bpmn-js/bpmn-modeler.production.min.js"
 
-grep -q 'BpmnModeler' "$TMP_DIR/page.html" || fail "the page is missing the BpmnModeler reference"
-pass "the page references BpmnModeler"
+grep -q 'BpmnJS' "$TMP_DIR/page.html" || fail "the page is missing the BpmnJS reference"
+pass "the page references BpmnJS"
 
 grep -q 'src="/bridge.js"' "$TMP_DIR/page.html" || fail "the page is missing the /bridge.js script tag"
 pass "the page loads /bridge.js"

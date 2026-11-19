@@ -100,7 +100,7 @@
 
         // The full Modeler (REQ-001): the unmodified "powered by
         // bpmn.io" watermark is rendered by the bundle itself.
-        var modeler = new BpmnModeler({ container: canvas });
+        var modeler = new BpmnJS({ container: canvas });
         // Exposed for web/bridge.js (Phase 120): the bridge is a thin
         // pass-through over this instance's API.
         window.__modeler = modeler;
@@ -152,7 +152,7 @@
             return;
           }
           modeler
-            .saveXml()
+            .saveXML()
             .then(function (result) {
               return fetch('/file?name=' + encodeURIComponent(name), {
                 method: 'POST',
