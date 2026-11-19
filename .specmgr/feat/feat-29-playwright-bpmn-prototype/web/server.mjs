@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The feat-29 prototype server (REQ-001, Task 100.100): a
- * zero-dependency `node:http` server bound to `127.0.0.1` only on the
+ * The feat-29 prototype server (REQ-001/REQ-002, Task 100.100 plus
+ * Task 110.100): a zero-dependency `node:http` server bound to
+ * `127.0.0.1` only on the
  * fixed port 8123 (8123 avoids 127.0.0.1:8080, permanently owned on
  * this system by an external root-owned service - the feat-20 note;
  * a configurable port or host is out of scope).
  *
- * Endpoints (this phase only - the file API lands in Phase 110 and
- * `web/bridge.js` in Phase 120):
+ * Endpoints (the file API is Phase 110; `web/bridge.js` lands in
+ * Phase 120):
  * - `GET /` - the Modeler page (`web/index.html`).
  * - `GET /bpmn-js/<file>` - files of the installed `bpmn-js`
  *   package's `dist` directory, resolved with Node's own resolver
@@ -19,7 +20,21 @@
  *   a path outside the `dist` directory is 404).
  * - `GET /bridge.js` - the feat-local `web/bridge.js`, when it exists
  *   (404 until Phase 120).
- * - anything else - 404.
+ * - the file API (REQ-002), confined to the feat-local `files/`
+ *   scratch directory:
+ *   - `GET /files` - a JSON array of the directory's regular-file
+ *     names, sorted; an empty directory is `[]`.
+ *   - `GET /file?name=` - the raw bytes of one scratch file; a
+ *     validated name that does not exist is 404.
+ *   - `POST /file?name=` - the only write endpoint: writes the raw
+ *     request body to `files/<name>` and answers a small JSON
+ *     confirmation.
+ *   A `name` that escapes the scratch directory (a leading `/`, a
+ *   path separator, a `.`/`..` name, or an encoded traversal) is
+ *   rejected with 400; the flat-name rules are the primary 400 leg
+ *   and a canonical `resolve` + `startsWith` guard stays as defense
+ *   in depth.
+ * - anything else, including a wrong method on a route - 404.
  *
  * Stdout discipline (REQ-001): nothing in this module writes to
  * stdout; the start failure is reported on stderr with a non-zero
@@ -32,7 +47,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { dirname, extname, join, resolve, sep } from 'node:path';
@@ -49,6 +64,9 @@ const FEAT_DIR = resolve(dirname(dirname(fileURLToPath(import.meta.url))));
 
 /** This feat's `web/` directory (the page, the future bridge). */
 const WEB_DIR = join(FEAT_DIR, 'web');
+
+/** This feat's `files/` scratch directory (REQ-002: the file API's only read/write location). */
+const FEAT_FILES_DIR = join(FEAT_DIR, 'files');
 
 /** The `createRequire` bound to this module's own URL (Node's own resolver). */
 const prototypeRequire = createRequire(import.meta.url);
@@ -114,6 +132,76 @@ function decodeSegment(segment) {
   }
 }
 
+/**
+ * Extracts the raw (still percent-encoded) value of the first `name`
+ * parameter from a raw query string; `null` when the query holds no
+ * `name` parameter. The value may legitimately be the empty string
+ * (`name=`), which the name validation rejects.
+ */
+function rawNameFromQuery(query) {
+  for (const pair of query.split('&')) {
+    const eq = pair.indexOf('=');
+    if (eq > 0 && pair.slice(0, eq) === 'name') {
+      return pair.slice(eq + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * Validates a file-API `name` (the shared leg of `GET /file?name=`
+ * and `POST /file?name=`, REQ-002): the scratch directory is flat, so
+ * the name must be a single non-empty file name - no leading `/` (an
+ * absolute path), no path separator, no `.`/`..` - and its resolved
+ * path must stay inside the `files/` directory (the canonical
+ * `resolve` + `startsWith(FEAT_FILES_DIR + sep)` guard, defense in
+ * depth; the flat-name rules are the primary 400 leg). Returns the
+ * validated name with its resolved absolute path, or `null` when the
+ * name must be rejected with 400.
+ */
+function resolveFileName(name) {
+  if (name.length === 0) {
+    return null;
+  }
+  if (name.startsWith('/') || name.includes(sep)) {
+    return null;
+  }
+  if (name === '.' || name === '..') {
+    return null;
+  }
+  const filePath = resolve(join(FEAT_FILES_DIR, name));
+  if (!filePath.startsWith(FEAT_FILES_DIR + sep)) {
+    return null;
+  }
+  return { name, filePath };
+}
+
+/**
+ * Reads and validates the `name` query parameter for the file-API
+ * routes (REQ-002): a missing parameter, invalid percent-encoding, or
+ * a name that escapes the flat `files/` scratch directory is a 400 in
+ * this server's JSON error shape; on success returns the validated
+ * name and resolved path.
+ */
+function validatedFileName(query, response) {
+  const raw = rawNameFromQuery(query);
+  if (raw === null) {
+    sendJson(response, 400, 'bad-request', 'the name query parameter is missing');
+    return null;
+  }
+  const name = decodeSegment(raw);
+  if (name === null) {
+    sendJson(response, 400, 'bad-request', 'the name is not valid percent-encoding');
+    return null;
+  }
+  const resolved = resolveFileName(name);
+  if (resolved === null) {
+    sendJson(response, 400, 'bad-request', 'the name must be a single file name inside the scratch directory');
+    return null;
+  }
+  return resolved;
+}
+
 /** The content type for a file by its extension (`application/octet-stream` otherwise). */
 function contentTypeFor(filePath) {
   return CONTENT_TYPES[extname(filePath)] ?? 'application/octet-stream';
@@ -127,10 +215,10 @@ function sendJson(response, status, code, message) {
 
 /**
  * Serves one file by absolute path (the shared serving leg of `GET /`,
- * `GET /bridge.js`, and `GET /bpmn-js/<file>`): a missing path or a
- * non-file is 404, a regular file is 200 with `cache-control: no-cache`
- * (the served content reflects the state at call time - the
- * turn-based contract).
+ * `GET /bridge.js`, `GET /bpmn-js/<file>`, and `GET /file?name=`): a
+ * missing path or a non-file is 404, a regular file is 200 with
+ * `cache-control: no-cache` (the served content reflects the state at
+ * call time - the turn-based contract).
  */
 async function serveFile(filePath, response) {
   let info;
@@ -179,15 +267,79 @@ async function serveBpmnJsAsset(segments, response) {
   await serveFile(filePath, response);
 }
 
-/** The request dispatcher: `GET /`, `GET /bridge.js`, `GET /bpmn-js/<file>`, and 404 for everything else. */
+/**
+ * The `GET /files` leg (REQ-002, Phase 110): a JSON array of the
+ * scratch directory's regular-file names, sorted; an empty directory
+ * is `[]`.
+ */
+async function listFiles(response) {
+  const entries = await readdir(FEAT_FILES_DIR, { withFileTypes: true });
+  const names = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .sort();
+  response.writeHead(200, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-cache',
+  });
+  response.end(JSON.stringify(names));
+}
+
+/**
+ * The `GET /file?name=` leg (REQ-002, Phase 110): the raw bytes of one
+ * scratch file; a validated name that does not exist is 404 (the
+ * `serveFile` leg).
+ */
+async function getFile(query, response) {
+  const resolved = validatedFileName(query, response);
+  if (resolved === null) {
+    return;
+  }
+  await serveFile(resolved.filePath, response);
+}
+
+/**
+ * The `POST /file?name=` leg (REQ-002, Phase 110): the only write
+ * endpoint. Writes the raw request body to `files/<name>` (the
+ * scratch directory is ensured on demand) and answers a small JSON
+ * confirmation (`{ ok, name, bytes }`).
+ */
+async function postFile(query, request, response) {
+  const resolved = validatedFileName(query, response);
+  if (resolved === null) {
+    return;
+  }
+  const chunks = [];
+  for await (const chunk of request) {
+    chunks.push(chunk);
+  }
+  const body = Buffer.concat(chunks);
+  await mkdir(FEAT_FILES_DIR, { recursive: true });
+  await writeFile(resolved.filePath, body);
+  response.writeHead(200, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-cache',
+  });
+  response.end(JSON.stringify({ ok: true, name: resolved.name, bytes: body.byteLength }));
+}
+
+/** The request dispatcher: the static routes, the file API (`GET /files`, `GET /file?name=`, `POST /file?name=`), and 404 for everything else. */
 async function handleRequest(request, response) {
   // The raw request path (like the preview server's dispatcher, not a
   // `URL`-normalized one): `..` segments stay visible so the asset
-  // leg can reject them with 400.
-  const pathname = (request.url ?? '/').split('?')[0];
+  // leg can reject them with 400. The query is split off raw as well,
+  // so the file-API leg sees invalid percent-encoding (400).
+  const rawUrl = request.url ?? '/';
+  const queryIndex = rawUrl.indexOf('?');
+  const pathname = queryIndex === -1 ? rawUrl : rawUrl.slice(0, queryIndex);
+  const query = queryIndex === -1 ? '' : rawUrl.slice(queryIndex + 1);
 
-  if (request.method !== 'GET') {
-    sendJson(response, 404, 'not-found', 'only GET is known on the prototype server');
+  // Method discipline (Phase 110): `GET` is known on every route;
+  // `POST` is known on `/file` only (the single write endpoint,
+  // REQ-002). A wrong method keeps the server's simple 404 stance
+  // (the Phase 100 decision) - no 405 machinery.
+  if (request.method !== 'GET' && !(pathname === '/file' && request.method === 'POST')) {
+    sendJson(response, 404, 'not-found', 'the route or method is not known on the prototype server');
     return;
   }
 
@@ -199,6 +351,20 @@ async function handleRequest(request, response) {
   if (pathname === '/bridge.js') {
     // The feat-local bridge; 404 until Phase 120 creates it.
     await serveFile(join(WEB_DIR, 'bridge.js'), response);
+    return;
+  }
+
+  if (pathname === '/files') {
+    await listFiles(response);
+    return;
+  }
+
+  if (pathname === '/file') {
+    if (request.method === 'GET') {
+      await getFile(query, response);
+    } else {
+      await postFile(query, request, response);
+    }
     return;
   }
 
@@ -231,5 +397,15 @@ server.on('error', (error) => {
   }
   process.exit(1);
 });
+
+// The `files/` scratch directory exists before the first request
+// (REQ-002): a creation failure is a start failure, reported on
+// stderr with a non-zero exit, like a port failure.
+try {
+  await mkdir(FEAT_FILES_DIR, { recursive: true });
+} catch (error) {
+  process.stderr.write(`the scratch directory could not be created: ${error.message}\n`);
+  process.exit(1);
+}
 
 server.listen(PORT, HOST);

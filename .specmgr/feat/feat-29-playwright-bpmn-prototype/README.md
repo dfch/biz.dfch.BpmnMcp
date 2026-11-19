@@ -121,8 +121,8 @@ Anchored in GitHub issue #29.
 
 #### Phase 110: File API and seed
 
-- [ ] Task 110.100: Add `GET /files`, `GET /file?name=`, and `POST /file` to `web/server.mjs` (confined to `files/`; traversal names -> 400).
-- [ ] Task 110.110: `bin/110-110-00-verify-file-api.sh` - seed `files/order-process.bpmn` from `apps/mcp-server/test/fixtures/order-process.bpmn` (read-only source, copied), prove the POST -> GET round trip is byte-identical, the listing, and the traversal leg; raw output under `bin/logs/`. (ACC-002)
+- [x] Task 110.100: Add `GET /files`, `GET /file?name=`, and `POST /file` to `web/server.mjs` (confined to `files/`; traversal names -> 400).
+- [x] Task 110.110: `bin/110-110-00-verify-file-api.sh` - seed `files/order-process.bpmn` from `apps/mcp-server/test/fixtures/order-process.bpmn` (read-only source, copied), prove the POST -> GET round trip is byte-identical, the listing, and the traversal leg; raw output under `bin/logs/`. (ACC-002)
 
 #### Phase 120: `__bpmn` bridge
 
@@ -181,11 +181,15 @@ Anchored in GitHub issue #29.
 
 ### Current Status
 
-**As of 2026-11-19**: Phase 100 (Server and Modeler page) complete. The workspace install was restored (`npm ci`, bpmn-js 18.31.1, all three pinned dist assets present), `web/server.mjs` (127.0.0.1:8123, zero-dependency `node:http`, no stdout) and `web/index.html` (full Modeler on `#canvas`, control strip, event log) are in place, and ACC-001 is proven by `bin/100-110-00-verify-page.sh` (200s plus markers, sha256-identical served assets, watermark markers in the served bundle). The root gate chain (`lint`, `format:check`, `build`, `test`) is green. `web/bridge.js` and the file API are not present yet (Phases 120 and 110 respectively).
+**As of 2026-11-19**: Phase 110 (File API and seed) complete. `web/server.mjs` now serves, next to the Phase 100 routes, the REQ-002 file API confined to the feat-local `files/` scratch directory: `GET /files` (a sorted JSON array of the directory's file names, `[]` when empty), `GET /file?name=` (the raw bytes; 404 for a validated name that does not exist), and `POST /file?name=` (the only write endpoint, JSON confirmation); every name that escapes the flat directory (traversal, encoded traversal, absolute path) is rejected with 400. `files/order-process.bpmn` is seeded from the repository fixture, and ACC-002 is proven by `bin/110-110-00-verify-file-api.sh` (sha256-identical POST -> GET round trip, the listing, all traversal 400 legs, nothing written outside `files/`). Phase 100's proof (`bin/100-110-00-verify-page.sh`, ACC-001) still passes, and the root gate chain (`lint`, `format:check`, `build`, `test`) is green. `web/bridge.js` is not present yet (Phase 120).
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-19T17:30:43.000Z - Phase 110 complete (File API and seed)
+
+Built and verified the file API. **Task 110.100:** `web/server.mjs` gained the REQ-002 file API confined to the feat-local `files/` scratch directory (resolved from `import.meta.url`, like every other feat-local path; the server ensures it at start, and the POST leg re-ensures it on demand): `GET /files` (a sorted JSON array of the directory's regular-file names, `[]` when empty), `GET /file?name=` (the raw bytes over the shared `serveFile` leg; a validated name that does not exist is 404), and `POST /file?name=` (the only write endpoint: writes the raw request body and answers `{ ok, name, bytes }`). The `name` goes through one shared validation leg on both `/file` routes: a missing parameter, invalid percent-encoding (the asset leg's `decodeSegment` idiom on the raw query value), a leading `/`, any path separator, or a `.`/`..` name is 400 (the flat-name rules are the primary leg), with the canonical `resolve` + `startsWith(FEAT_FILES_DIR + sep)` guard kept as defense in depth; errors keep the server's existing JSON shape. Method discipline keeps the Phase 100 404 stance (`POST` is known on `/file` only; a wrong method or route is 404, no 405 machinery). **Task 110.110:** `bin/110-110-00-verify-file-api.sh` (ACC-002) passes: it seeds `files/order-process.bpmn` from the read-only fixture (sha256 `5439db74...`, the fixture verified unmodified before/after the run), proves the POST -> GET round trip of `roundtrip-test.bpmn` is sha256-identical (`5439db74...`, the fixture XML as the controlled body), proves `GET /files` returns 200 with the listing `["order-process.bpmn","roundtrip-test.bpmn"]`, and rejects all four traversal legs with 400 (`../evil.bpmn` on POST and on GET, the `%2e%2e%2fevil.bpmn` encoded variant on POST, the absolute path `/etc/passwd` on POST) with nothing written outside `files/`; plus the 400 for a missing `name`, the 404 for a nonexistent file, the 404s for wrong methods (`POST /files`, `PUT /file`), and the empty-stdout check (REQ-001); the script removes its `roundtrip-test.bpmn` artifact at the end, keeping the seeded fixture committed-ready. Raw output in `bin/logs/110-110-verify-file-api.log`. Phase 100's proof re-run: `bin/100-110-00-verify-page.sh` still passes (ACC-001). Root gate chain green with the feat folder present: `npm run lint`, `npm run format:check`, `npm run build`, `npm test` (19 files, 361 passed / 2 pre-existing skipped).
 
 #### 2026-11-19T15:51:00.000Z - Phase 100 complete (Server and Modeler page)
 
@@ -205,6 +209,10 @@ in-page bridge), and the confinement to this feat folder.
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-19T17:30:43.000Z - Phase 110 implementation details
+
+Settled during Phase 110 (all details the plan left open): (1) **`GET /files` shape** - a plain sorted JSON array of regular-file name strings (not objects with sizes), `[]` for an empty directory - minimal per REQ-002. (2) **`POST /file` response** - 200 with `{ ok: true, name, bytes }` (the name echo plus the written byte count); the raw request body is written verbatim, with no content-type requirement and no size limit (loopback-only prototype). (3) **`files/` creation** - the server ensures the scratch directory at start (a top-level `mkdir` recursive before `listen`; a failure is a start failure on stderr with a non-zero exit, like a port failure), and the POST leg re-ensures it on demand. (4) **Name validation** - one shared leg for `GET /file` and `POST /file`: missing/empty `name`, invalid percent-encoding, a leading `/`, any path separator, or a `.`/`..` name -> 400; the canonical `resolve(join(FEAT_FILES_DIR, name))` + `startsWith(FEAT_FILES_DIR + sep)` guard stays as defense in depth and also 400s (REQ-002 rejects every escape with 400, unlike the asset leg's 404); the query parameter is extracted raw (no `URL`/`URLSearchParams` normalization, so a literal `+` stays `+` and an invalid escape reaches the 400 leg). (5) **Method discipline** - `GET` is known on every route and `POST` on `/file` only (the single write endpoint); a wrong method on a route keeps the Phase 100 simple 404 stance (no 405 machinery). (6) **Cleanup** - the verify script removes its `roundtrip-test.bpmn` test artifact at the end; the seeded `files/order-process.bpmn` stays in place, committed as a result.
 
 #### 2026-11-19T15:51:00.000Z - Phase 100 implementation details
 
