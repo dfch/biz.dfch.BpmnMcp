@@ -115,9 +115,9 @@ Anchored in GitHub issue #29.
 
 #### Phase 100: Server and Modeler page
 
-- [ ] Task 100.090: Verify the workspace install holds the declared dependency - `node_modules/bpmn-js` exists at the root with the exact dist assets `bpmn-modeler.production.min.js`, `assets/diagram-js.css`, and `assets/bpmn-js.css`; the 2026-11-19 checkout is stale/partial (`bpmn-js` and `bpmnlint` are missing from `node_modules` although `package-lock.json` declares them), so if the check fails run `npm ci` and re-verify; record the outcome under `bin/logs/`. (Below-100 task number per the `190.090` precedent, so the install verification precedes the build - see Decisions Made.)
-- [ ] Task 100.100: Author `web/server.mjs` (127.0.0.1:8123; `GET /` -> the page; `GET /bpmn-js/<file>` -> the installed `bpmn-js` dist via `createRequire` resolution; `GET /bridge.js` -> the feat-local `web/bridge.js`; other routes 404; no stdout) and `web/index.html` (the full Modeler on `#canvas`; the `__bpmn` bridge loaded via `<script src="/bridge.js">`; the control strip: name input, Load/Save buttons; the `commandStack.changed` event log in a `<pre>`; the watermark unmodified).
-- [ ] Task 100.110: `bin/100-110-00-verify-page.sh` - start the server, curl `/` and the three pinned assets, sha256-compare the served bytes against the installed dist, assert the watermark markers (`bjs-powered-by`, `Powered by bpmn.io`) in the served Modeler bundle's bytes, stop the server; raw output under `bin/logs/`. (ACC-001)
+- [x] Task 100.090: Verify the workspace install holds the declared dependency - `node_modules/bpmn-js` exists at the root with the exact dist assets `bpmn-modeler.production.min.js`, `assets/diagram-js.css`, and `assets/bpmn-js.css`; the 2026-11-19 checkout is stale/partial (`bpmn-js` and `bpmnlint` are missing from `node_modules` although `package-lock.json` declares them), so if the check fails run `npm ci` and re-verify; record the outcome under `bin/logs/`. (Below-100 task number per the `190.090` precedent, so the install verification precedes the build - see Decisions Made.)
+- [x] Task 100.100: Author `web/server.mjs` (127.0.0.1:8123; `GET /` -> the page; `GET /bpmn-js/<file>` -> the installed `bpmn-js` dist via `createRequire` resolution; `GET /bridge.js` -> the feat-local `web/bridge.js`; other routes 404; no stdout) and `web/index.html` (the full Modeler on `#canvas`; the `__bpmn` bridge loaded via `<script src="/bridge.js">`; the control strip: name input, Load/Save buttons; the `commandStack.changed` event log in a `<pre>`; the watermark unmodified).
+- [x] Task 100.110: `bin/100-110-00-verify-page.sh` - start the server, curl `/` and the three pinned assets, sha256-compare the served bytes against the installed dist, assert the watermark markers (`bjs-powered-by`, `Powered by bpmn.io`) in the served Modeler bundle's bytes, stop the server; raw output under `bin/logs/`. (ACC-001)
 
 #### Phase 110: File API and seed
 
@@ -181,11 +181,15 @@ Anchored in GitHub issue #29.
 
 ### Current Status
 
-**As of 2026-11-18**: Planning. Anchored in GitHub issue #29; the phase structure (100-200, one phase per rubric item for R1-R6) is fixed; implementation has not started.
+**As of 2026-11-19**: Phase 100 (Server and Modeler page) complete. The workspace install was restored (`npm ci`, bpmn-js 18.31.1, all three pinned dist assets present), `web/server.mjs` (127.0.0.1:8123, zero-dependency `node:http`, no stdout) and `web/index.html` (full Modeler on `#canvas`, control strip, event log) are in place, and ACC-001 is proven by `bin/100-110-00-verify-page.sh` (200s plus markers, sha256-identical served assets, watermark markers in the served bundle). The root gate chain (`lint`, `format:check`, `build`, `test`) is green. `web/bridge.js` and the file API are not present yet (Phases 120 and 110 respectively).
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-19T15:51:00.000Z - Phase 100 complete (Server and Modeler page)
+
+Built and verified the prototype server and Modeler page. **Task 100.090:** the initial check failed as predicted (the 2026-11-19 checkout had no `node_modules` at all); `npm ci` at the repo root restored the install (351 packages, bpmn-js 18.31.1) and the re-check found all three pinned dist assets - outcome in `bin/logs/100-090-install-verify.log`. **Task 100.100:** `web/server.mjs` (zero-dependency `node:http`, 127.0.0.1:8123 fixed, `GET /` -> `web/index.html`, `GET /bpmn-js/<file>` -> the installed dist via `createRequire` with the preview-server path-safety (invalid encoding/dot segments 400, canonical escape guard 404), `GET /bridge.js` -> the feat-local bridge when present (404 until Phase 120), other routes 404, nothing on stdout; all feat-local paths resolved from `import.meta.url`) and `web/index.html` (full `BpmnModeler` on `#canvas`, the three pinned assets over the `/bpmn-js/` prefix, `<script src="/bridge.js">`, the control strip with name input plus Load/Save over the future file API, a `commandStack.changed` event log in a `<pre>`, the Modeler instance exposed as `window.__modeler` for the Phase 120 bridge, watermark unmodified). **Task 100.110:** `bin/100-110-00-verify-page.sh` (ACC-001) passes: `GET /` 200 with the `#canvas`/bundle-script/`BpmnModeler`/`/bridge.js` markers, all three pinned assets 200 with sha256-identical served bytes (`bpmn-modeler.production.min.js` `052e46d0...`, `assets/diagram-js.css` `73f990dc...`, `assets/bpmn-js.css` `a1add5dc...`), the served Modeler bundle holds `bjs-powered-by` and `Powered by bpmn.io`, the server wrote nothing to stdout; raw output in `bin/logs/100-110-verify-page.log`. Root gate chain green with the feat folder present: `npm run lint`, `npm run format:check`, `npm run build`, `npm test` (19 files, 361 passed / 2 pre-existing skipped).
 
 #### 2026-11-19T08:37:46.000Z - Plan refined (feat-refiner pass, 16 findings)
 
@@ -201,6 +205,10 @@ in-page bridge), and the confinement to this feat folder.
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-19T15:51:00.000Z - Phase 100 implementation details
+
+Settled during Phase 100 (all details the plan left open): (1) **Verify-script server lifecycle** - `bin/100-110-00-verify-page.sh` fails loudly on a pre-check (`ss -ltnH`) if port 8123 is already in use, then starts the server as a direct background process (`node web/server.mjs`, cwd = repo root), captures the PID, polls `curl -sf` 10x0.5s for readiness, and kills+waits the PID via an `EXIT` trap (no orphaned server, no `pkill`-style matching). (2) **Routing semantics of `web/server.mjs`** - non-`GET` methods and unknown routes both answer 404 (the plan names only `GET` routes and says "other routes 404" - no 405 machinery); every 4xx/5xx body uses the preview server's JSON shape `{ error: { code, message } }`. (3) **Asset path safety** - the raw request path is taken verbatim (no `URL` normalization, exactly like the preview server's dispatcher) so that literal `.`/`..` segments hit the 400 leg; `%2f`-joined traversal survives decoding as a single segment and is stopped by the canonical `resolve` + `startsWith(distDir + sep)` guard with 404. (4) **Bridge access to the Modeler** - the page stores its instance as `window.__modeler`, so the Phase 120 `bridge.js` can wire `window.__bpmn` as a thin pass-through without the page needing bridge-specific code. (5) **Load/Save URL shape** - both use `name` as a query parameter (`GET /file?name=`, `POST /file?name=` with the XML body), mirroring each other; Phase 110 owns the exact file-API contract.
 
 #### 2026-11-19T08:37:46.000Z - Refinement decisions
 
