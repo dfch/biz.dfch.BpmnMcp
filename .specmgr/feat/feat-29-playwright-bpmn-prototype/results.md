@@ -95,11 +95,74 @@ heavier workload.
 
 ## R2: Flakiness, pixel strategy (Phase 160)
 
-- pending: Phase 160 — three fresh-load full pixel draws of the pinned
-  Task A model; per run: call count, retries after failure, deviation
-  of the final `getState()` from the target, wall time, state-capture
-  channel recorded as the bridge save. Not filled here: this phase (140)
-  owns R3 only.
+**Question.** How reliable is the pixel strategy over a full draw? Three
+fresh-load pixel draws of the pinned Task A model (6 shapes + 6 sequence
+flows; Task 160.100 verified the pin complete and drift-free across all
+occurrences in the plan — the quoted labels are the pinned ids, element
+names are not pinned and not scored). Each run: fresh
+`browser_navigate` → pixel-native Load of the staged empty-process
+baseline `r2-baseline.bpmn` (created from the terminal via the file API,
+byte-exact `EMPTY_DIAGRAM_XML` from `web/bridge.js` — a precondition,
+since Phase 130 finding 2 proved pixel creation is rejected on a truly
+empty canvas) → full pixel-first draw (palette click → canvas click →
+Escape per shape; the global connect tool re-armed before each of the 6
+connects — the armed tool is single-use per the installed
+diagram-js/bpmn-js source) → close: bridge `getState()` (final state
+capture), bridge save as `r2-run-N.bpmn` (the plan's D4 allowed
+measurement channel — state capture, not a strategy use, not a
+fallback), screenshot. Per-run call count = the Playwright MCP calls
+from after the baseline Load completes through the close (staging
+excluded). Deviation = the approved Option A structural metric (D1 shape
+counts + D2 flow count + D3 connectivity/types; 0 = perfect structure).
+**Id-identity constant gap (one-time, not per-run scored):** the pinned
+ids (`start`/`task`/`gw`/`task1`/`task2`/`end`, `f1`–`f6`) are
+unmatchable against the factory-generated actual ids (12/12) under either
+strategy — no id surface on the page (R3) and no id parameter in the
+bridge API; the structural score is the deviation meter, and the three
+runs produced three mutually disjoint factory id sets (listed in the raw
+record).
+
+| run | call count | retries after failure | deviation (D1+D2+D3)                        | aux. position drift                                                | wall time                    | state-capture channel                     | notes                                                                                                                                                                                                                                                                                                    | raw ref                    |
+| --- | ---------- | --------------------- | ------------------------------------------- | ------------------------------------------------------------------ | ---------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| 1   | 43         | 0                     | 0 (D1 0 + D2 0 + D3 0: D3a 0, D3b 0, D3c 0) | ≈1.08 px (grid snap ≤5 px on start/gw/end; on-grid nominals exact) | 78.7 min (11:36:40→12:55:21) | bridge save (D4) `r2-run-1.bpmn` (3886 B) | recipe-development run: the first two shapes unbatched (separate Escape call) plus the run-1-only gateway type verification — live-confirmed `bpmn:ExclusiveGateway` after the single palette drop, so the anticipated "Change element" compound op was NOT needed (see summary); `160-110-r2-run-1.png` | `160-120-r2-raw.md` §Run 1 |
+| 2   | 29         | 0                     | 0 (D1 0 + D2 0 + D3 0: D3a 0, D3b 0, D3c 0) | ≈1.08 px (the same six model centers as run 1)                     | 39.9 min (13:30:42→14:10:38) | bridge save (D4) `r2-run-2.bpmn` (3886 B) | fully batched convention (per shape: palette click + one click/Escape/probe call; per connect: palette re-arm + one clicks/probe call); every creation and connect first-try OK; `160-110-r2-run-2.png`                                                                                                  | `160-120-r2-raw.md` §Run 2 |
+| 3   | 29         | 0                     | 0 (D1 0 + D2 0 + D3 0: D3a 0, D3b 0, D3c 0) | ≈1.08 px (the same six model centers as runs 1–2)                  | 24.6 min (14:20:04→14:44:37) | bridge save (D4) `r2-run-3.bpmn` (3886 B) | run 2's recipe verbatim; the third disjoint factory id set; every creation and connect first-try OK; `160-110-r2-run-3.png`                                                                                                                                                                              | `160-120-r2-raw.md` §Run 3 |
+
+**Summary.** The pixel strategy did not wobble structurally in this phase:
+3/3 runs reproduced the pinned Task A exactly (deviation min/mean/max =
+0/0/0), with 0 retries and 0 bridge fallbacks in every run — no pixel
+primitive ever failed, so the Strategy A fallback rule was never
+triggered. The variance that the data does show is (1) **call count**:
+43 vs 29 vs 29 — run 1 was the recipe-development run (the first two
+shapes used the unbatched recipe with a separate Escape call, plus the
+run-1-only gateway type-verification probe); runs 2–3 are stable at 29
+under the documented batching convention (per shape: palette click + one
+canvas-click/Escape/probe call; per connect: one palette re-arm + one
+clicks/probe call); (2) **wall time**: 78.7 / 39.9 / 24.6 min — decaying
+across the session with per-MCP-call round-trip latency (session
+latency), not with draw complexity (runs 2–3 executed identical call
+sequences); (3) **position**: exactly repeatable across runs (all three
+landed on the same six model centers); the only systematic offset is the
+pixel-create grid snap to 10 — start 118→120, gateway 425→430, end
+738→740 (≤5 px vs the nominal layout, aux drift 1.08 px in every run),
+whereas the bridge's `addShape` honors coordinates as-is (Phase 120) — a
+constant, not a flake. The **gateway compound op was anticipated as the
+hardest measurement point but was not an operation at all**: the
+installed bpmn-js 18.31.1 palette "Create gateway" entry creates
+`bpmn:ExclusiveGateway` directly (the entry's _icon_ is the generic
+gateway glyph; `PaletteProvider.js`
+`create.exclusive-gateway → createAction('bpmn:ExclusiveGateway', …,
+"Create gateway")`, verified live in run 1), so the context-pad "Change
+element" → exclusive path was never needed and the no-bridge-fallback
+risk for it never materialized. Known constants carried by the pixel
+strategy: the 12/12 id gap (three mutually disjoint factory id sets —
+the structural score is the meter) and the one-shot connect tool (each of
+the 6 connects needs its own palette re-arm — protocol overhead, zero
+failures). **R4 qualification:** the bridge head-to-head reuses this
+exact metric — D1+D2+D3 over the same slot mapping, the same
+call-count convention (browser MCP calls in the run window, staging
+excluded), plus wall time — so the R4 rows compare 1:1 against the
+0/0/0 here.
 
 ## R3: State readability via browser_snapshot alone (Phase 140)
 
