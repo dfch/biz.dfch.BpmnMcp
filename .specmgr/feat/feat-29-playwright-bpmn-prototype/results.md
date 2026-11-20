@@ -32,11 +32,66 @@ cell must always carry a reason.
 
 ## R1: First-try success per primitive (Phase 150)
 
-- pending: Phase 150 — pixel-first pass over {add-shape, connect,
-  rename, load, save} with the bridge as documented fallback after a
-  failure, then the same five primitives via `__bpmn` only; one table
-  row per primitive × strategy (first-try ok/fail, fallback used,
-  notes). Not filled here: this phase (140) owns R3 only.
+**Question.** For each of the five primitives {add-shape, connect,
+rename, load, save}, does each strategy succeed on the first genuine
+attempt? Strategy A = pixels (palette click, canvas pixel clicks,
+double-click inline edit, the page's Load/Save buttons — the bridge
+only as a documented fallback after a failure, per the Strategy A rule);
+Strategy B = `window.__bpmn` only, via `browser_evaluate`. Every run
+started from a fresh `browser_navigate` plus the documented baseline
+(fixture `order-process.bpmn`, loaded pixel-natively for A, via
+`__bpmn.load` for B — the load primitive itself carries no baseline);
+each result was confirmed through the labeled measurement channel
+(bridge `getState()` — the R3 implication — or the terminal file API
+for the two save runs). Pixel aiming used the DOM `data-element-id`
+screen-rect probe (operational aiming, per the R3 raw record §5). Raw
+record: `bin/logs/150-120-r1-raw.md` (one § per run); evidence
+snapshots `150-100-r1-a-rename.yml`, `150-100-r1-a-load.yml`.
+
+| primitive | strategy   | first-try | retries | fallback used                                                                                                                                      | confirmed by (channel)                     | notes                                                                                                                                                                                                                                                                                                                                 | raw ref                                             |
+| --------- | ---------- | --------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| add-shape | A (pixels) | ok        | 0       | none                                                                                                                                               | bridge `getState()`                        | palette "Create task" → canvas click (600,300) → Escape (the label editor auto-opens on creation — the Phase 130 finding); new unnamed Task `Activity_0q4vh8s`; required the loaded-diagram baseline (empty canvas rejects `shape.create`)                                                                                            | `150-120-r1-raw.md` §A1                             |
+| connect   | A (pixels) | ok        | 0       | none                                                                                                                                               | bridge `getState()`                        | first-try approach: the global connect tool (activate → click `start-event` (170,165) → click `end-event` (420,165)); new flow `Flow_06e1o5y` (start-event→end-event); the port-drag retry path (`page.mouse` down/move/up) was never needed — the connect tool is plain mouse clicks, sidestepping the headless HTML5-DnD limitation | `150-120-r1-raw.md` §A2                             |
+| rename    | A (pixels) | ok        | 0       | none                                                                                                                                               | bridge `getState()` + snapshot label       | double-click `review-task` at (302,165) → inline editor filled with "Review order R1" → Enter; confirmed in `getState()` AND the rendered label (`150-100-r1-a-rename.yml` L13)                                                                                                                                                       | `150-120-r1-raw.md` §A3 + `150-100-r1-a-rename.yml` |
+| load      | A (pixels) | ok        | 0       | none                                                                                                                                               | bridge `getState()` + snapshot status text | `#name` filled to `order-process.bpmn` → Load clicked; 3 shapes / 2 flows; status "loaded order-process.bpmn" (`150-100-r1-a-load.yml` L7)                                                                                                                                                                                            | `150-120-r1-raw.md` §A4 + `150-100-r1-a-load.yml`   |
+| save      | A (pixels) | ok        | 0       | none                                                                                                                                               | file API (terminal)                        | baseline fixture → `#name` = `r1-pixel-save.bpmn` → Save clicked; listed by `GET /files` and written with the full model + DI (`GET /file`); status "saved r1-pixel-save.bpmn"                                                                                                                                                        | `150-120-r1-raw.md` §A5                             |
+| add-shape | B (bridge) | ok        | 0       | n/a — the fallback concept exists only for Strategy A (the pixel strategy); Strategy B is the bridge itself, per the Design Notes' Strategy A rule | bridge `getState()`                        | `addShape('bpmn:Task', 450, 200, 'r1-bridge-task')` → `{ ok, id: "Activity_1qj7imq" }`; (x, y) honored as the DI top-left corner (the bridge's as-is coordinate semantics)                                                                                                                                                            | `150-120-r1-raw.md` §B1                             |
+| connect   | B (bridge) | ok        | 0       | n/a — same reason as the add-shape B row                                                                                                           | bridge `getState()`                        | `connect('start-event', 'end-event')` → `{ ok, id: "Flow_1x3cd9d" }`; flow confirmed with correct source/target                                                                                                                                                                                                                       | `150-120-r1-raw.md` §B2                             |
+| rename    | B (bridge) | ok        | 0       | n/a — same reason as the add-shape B row                                                                                                           | bridge `getState()`                        | `setProp('review-task', 'Review order R1B')` → `{ ok }`; name confirmed                                                                                                                                                                                                                                                               | `150-120-r1-raw.md` §B3                             |
+| load      | B (bridge) | ok        | 0       | n/a — same reason as the add-shape B row                                                                                                           | bridge `getState()`                        | `load('order-process.bpmn')` → `{ ok }`; 3 shapes / 2 flows                                                                                                                                                                                                                                                                           | `150-120-r1-raw.md` §B4                             |
+| save      | B (bridge) | ok        | 0       | n/a — same reason as the add-shape B row                                                                                                           | file API (terminal)                        | staged load + `setProp` rename → `save('r1-bridge-save.bpmn')` → `{ ok, bytes: 1557 }`; the on-disk XML carries the staged rename                                                                                                                                                                                                     | `150-120-r1-raw.md` §B5                             |
+
+**Analysis.** All ten runs succeeded on the first genuine attempt (A
+5/5, B 5/5); zero retries and zero bridge fallbacks anywhere in the
+phase — no pixel primitive ever failed, so the Strategy A fallback rule
+was never triggered. Where pixels succeed on first try: all five
+primitives, but only with the three operational preconditions
+established in Phases 130/140 in place: (1) a loaded diagram before
+creation (an empty canvas has the implicit root, and `shape.create` is
+rejected at the rules level — hence the pixel-native fixture Load as
+baseline for A1–A3/A5); (2) the Escape step after a creation's
+auto-opened label editor (its overlay intercepts any pointer event
+until closed); (3) pixel coordinates from the DOM `data-element-id`
+probe — `browser_snapshot` exposes no coordinates at all (R3), so
+aiming accuracy is a _precondition_ of pixel first-try success, not a
+consequence of it. The connect primitive succeeded first-try via the
+global connect tool, the approach chosen precisely because the
+palette's HTML5-DnD create drag does not complete in this headless
+setup (Phase 130 finding 1): the connect tool is plain mouse clicks
+(activate → source → target) and sidesteps DnD entirely; the
+alternative port drag (`page.mouse` down on a source port, move, up on
+the target) was recorded as the retry path and never needed. Strategy B
+compares cleanly: also 5/5 first-try, but each primitive is a single
+`browser_evaluate` returning `{ ok, ... }` (against 3–5 UI operations
+plus baseline plus aiming for the same primitive under A), with no
+aiming, no editor-interaction hazard, and no DnD limitation surface —
+its only precondition is a loaded diagram for the mutating members
+(`addShape` even auto-seeds an empty canvas, the Phase 120 bridge
+design). The honest R1 reading: first-try reliability is equivalent
+(10/10 either way) — the difference between the strategies is step
+count and preconditions, not failure rate; a difference that R2 (pixel
+flakiness over full draws) and R4 (head-to-head) stress under a much
+heavier workload.
 
 ## R2: Flakiness, pixel strategy (Phase 160)
 
