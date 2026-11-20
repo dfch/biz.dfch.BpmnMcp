@@ -230,10 +230,85 @@ not replace it.
 
 ## R4: Pixel vs bridge head-to-head (Phase 170)
 
-- pending: Phase 170 — three fresh-load bridge-only draws of Task A
-  (`r4-run-N.bpmn` + screenshots), compared against the Phase 160 pixel
-  runs: calls, failures, wall time, deviation rate. Not filled here:
-  this phase (140) owns R3 only.
+**Question.** Head-to-head: for the same pinned Task A draw, how does
+the bridge-only strategy (B) compare with the pixel strategy (A, Phase 160) on calls, failures, wall time, and deviation rate? Protocol mirror
+of R2 — three fresh-load draws of the pinned Task A model (baseline per
+run: fresh `browser_navigate` → `__bpmn.load('r2-baseline.bpmn')`, the
+same staged empty-process file the pixel runs loaded, confirmed empty
+in-page; the call-count window opens after that load, staging
+excluded), the same structural metric (D1+D2+D3 over the same slot
+mapping — start/end/gw by type, the pre-gw task by its incoming flow
+from the start slot, task1 = the smaller-screen-x of the two post-gw
+tasks), the same wall-time window (baseline-load-done to
+score-recorded). One grain note (the counting convention made
+operational for the bridge): a batched multi-statement
+`browser_evaluate` counts as one call — the bridge's natural grain; this
+phase ran at the per-primitive grain (one evaluate per `__bpmn` member →
+6 addShape + 6 connect + state/geometry probe + save + screenshot = 15
+counted calls per run). The bridge runs aimed at the R2 pixel runs'
+ACHIEVED six model centers (center − half-size top-left corners — the
+bridge honors coordinates as-is, Phase 120), so the two strategies'
+geometry is directly comparable (aux drift measured against those
+centers). Raw record: `bin/logs/170-120-r4-raw.md` (preamble + one block
+per run); screenshots `170-110-r4-run-{1,2,3}.png`; saved models
+`files/r4-run-{1,2,3}.bpmn`.
+
+| strategy | run | call count | first-try failures / retries | deviation (D1+D2+D3)                        | aux. position drift                                                | wall time                    | notes                                                                                                                                                                                                                                        | raw ref                    |
+| -------- | --- | ---------- | ---------------------------- | ------------------------------------------- | ------------------------------------------------------------------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| pixel    | 1   | 43         | 0 / 0                        | 0 (D1 0 + D2 0 + D3 0: D3a 0, D3b 0, D3c 0) | ≈1.08 px (grid snap ≤5 px on start/gw/end; on-grid nominals exact) | 78.7 min (11:36:40→12:55:21) | recipe-development run: first two shapes unbatched (separate Escape call) plus the run-1-only gateway type probe (live-confirmed `bpmn:ExclusiveGateway` — the compound op was NOT needed); copied from the R2 table; `160-110-r2-run-1.png` | `160-120-r2-raw.md` §Run 1 |
+| pixel    | 2   | 29         | 0 / 0                        | 0 (D1 0 + D2 0 + D3 0: D3a 0, D3b 0, D3c 0) | ≈1.08 px (the same six model centers as run 1)                     | 39.9 min (13:30:42→14:10:38) | fully batched convention (per shape: palette click + one click/Escape/probe call; per connect: palette re-arm + one clicks/probe call); copied from the R2 table; `160-110-r2-run-2.png`                                                     | `160-120-r2-raw.md` §Run 2 |
+| pixel    | 3   | 29         | 0 / 0                        | 0 (D1 0 + D2 0 + D3 0: D3a 0, D3b 0, D3c 0) | ≈1.08 px (the same six model centers as runs 1–2)                  | 24.6 min (14:20:04→14:44:37) | run 2's recipe verbatim; the third pixel factory id set; copied from the R2 table; `160-110-r2-run-3.png`                                                                                                                                    | `160-120-r2-raw.md` §Run 3 |
+| bridge   | 1   | 15         | 0 / 0                        | 0 (D1 0 + D2 0 + D3 0: D3a 0, D3b 0, D3c 0) | 0.0 px (aimed at R2's achieved centers; as-is coordinates)         | 12.7 min (17:43:09→17:55:53) | per-primitive grain: 6 addShape + 6 connect, all first-try `{ ok }`; close = state/geometry probe + `__bpmn.save('r4-run-1.bpmn')` (a strategy B member, 3886 B) + screenshot; `170-110-r4-run-1.png`                                        | `170-120-r4-raw.md` §Run 1 |
+| bridge   | 2   | 15         | 0 / 0                        | 0 (D1 0 + D2 0 + D3 0: D3a 0, D3b 0, D3c 0) | 0.0 px (the same six model centers as run 1)                       | 10.4 min (17:58:53→18:09:16) | run 1's recipe verbatim; the second bridge factory id set; save 3886 B; `170-110-r4-run-2.png`                                                                                                                                               | `170-120-r4-raw.md` §Run 2 |
+| bridge   | 3   | 15         | 0 / 0                        | 0 (D1 0 + D2 0 + D3 0: D3a 0, D3b 0, D3c 0) | 0.0 px (the same six model centers as runs 1–2)                    | 11.1 min (18:23:52→18:35:01) | run 1's recipe verbatim; the third bridge factory id set; save 3886 B; `170-110-r4-run-3.png`                                                                                                                                                | `170-120-r4-raw.md` §Run 3 |
+
+**Id-variance observation (approved Option A supplement — the data point
+for the user's C-question).** (a) the three R4 factory id sets are
+mutually disjoint (random-suffix factory ids, verified against the saved
+files: 72 unique model ids across the six artifacts, 0 shared); (b)
+**one table row: same model, six id sets** — all six Task A artifacts
+across R2+R4 (`r2-run-{1,2,3}.bpmn`, `r4-run-{1,2,3}.bpmn`) carry six
+mutually disjoint id sets for the same pinned model: the id-instability
+a pinned-id API (the user's considered Option C) would remove, measured
+without changing the system under test (full id sets in
+`170-120-r4-raw.md` §Id-variance; the R2 sets in `160-120-r2-raw.md`).
+
+**Comparison (the R4 verdict).** Deviation rate: **0% vs 0%** — 3/3 runs
+per strategy reproduced the pinned Task A exactly (D1+D2+D3 = 0 in all
+six runs), with 0 first-try failures and 0 retries in every run: the
+head-to-head is not a reliability difference in this workload. Calls:
+**bridge 15/15/15 vs pixel 43/29/29** — a ~2× step-count advantage for
+the bridge against the pixel runs' stable convention (and ~3× against
+pixel run 1's recipe-development number); the grain difference is
+structural, 1 `browser_evaluate` per bridge primitive vs 3–5 UI ops per
+pixel primitive (palette click + canvas click + Escape + probe per
+shape; palette re-arm + endpoint clicks + probe per connect — the armed
+connect tool is one-shot). Wall time: **bridge 12.7/10.4/11.1 min vs
+pixel 78.7/39.9/24.6 min**, with the session-latency caveat stated: the
+bridge runs happened later in the session (17:43–18:35Z, after R2's
+14:44Z finish), so raw totals mix call count with per-call latency;
+per-call the two are the same order (R4 ≈ 50.8/41.6/44.4 s per MCP call
+vs R2 ≈ 109.5/82.3/50.9 s — both decaying with the session), so the
+wall-time gap is dominated by call count, not by the bridge being
+faster per op. Geometry: the bridge's as-is coordinates reproduced the
+pixel runs' ACHIEVED centers exactly (aux drift 0.0 px in every bridge
+run; the pixel runs' 1.08 px drift is their own grid-snap offset versus
+their off-grid nominals — with R4 aiming at the achieved centers, the
+two strategies' geometry is directly comparable and identical).
+Preconditions (the robustness side): a pixel draw needs the loaded-
+diagram baseline, aiming probes (R3: the snapshot exposes no
+coordinates), an Escape after every creation's auto-opened label
+editor, a palette re-arm before each of the 6 connects (the one-shot
+tool), and grid-snap tolerance; the bridge needs none of these — no
+aiming (model coordinates), no editor-interaction hazard, no DnD
+surface, no re-arm — and `addShape` even auto-seeds an empty canvas, so
+the loaded baseline is a protocol choice here, not a requirement. How
+this reads for the R6/verdict: the proposal's value shows up in step
+count and robustness (fewer ops per draw, fewer failure surfaces per
+op), not in per-call speed — and both strategies still need the bridge
+for verification (R3: the pixels have hands but no eyes; every run
+above, pixel or bridge, was measured through `getState()`/save or a DOM
+probe), so the pixels do not replace the bridge.
 
 ## R5: Save fidelity (Phase 180)
 
