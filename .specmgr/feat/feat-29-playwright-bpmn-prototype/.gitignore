@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Ronald Rink, d-fens GmbH
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Raw evaluation data (logs, snapshots, screenshots) - never committed.
+# The root .gitignore's logs/ pattern already covers this in-repo; this
+# nested file keeps the exclusion intact if this feat folder is ever
+# extracted or copied standalone (the plan's I4 note).
+bin/logs/
