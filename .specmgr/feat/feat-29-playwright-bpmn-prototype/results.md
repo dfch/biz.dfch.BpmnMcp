@@ -405,7 +405,79 @@ version-stamps files across the two paths.
 
 ## R6: Human-in-the-loop (Phase 190)
 
-- pending: Phase 190 — the user's manual edit + save on sys0's local
-  display (`human-edit-start.bpmn` → `human-edited.bpmn`), then the
-  agent's read-back via the file API and the bridge, plus the user's
-  subjective notes. Not filled here: this phase (140) owns R3 only.
+**Leg as executed.** Task 190.090 (the hand-off) was performed by the
+orchestrator with the user (2026-11-21); Task 190.110 (the user leg)
+was performed by the user: the user opened the page in a browser on
+their machine over an SSH port-forward to 127.0.0.1:8123 — sys0's
+local display was not up in this environment (an environment note, not
+a protocol deviation: every step of the leg ran against the same fixed
+endpoint the plan's connect steps name) — loaded
+`human-edit-start.bpmn` (the prep baseline: a byte-identical copy of
+the Phase 170 final run `files/r4-run-3.bpmn`, 3887 B, sha256
+`6846ea0b…`, structural baseline in
+`bin/logs/190-100-prepare-human-edit.md`), inspected the agent-drawn
+canvas, made manual edits, and saved via the page as
+`human-edited.bpmn`. In the same leg the user reported the
+icon-font bug: on the left palette the tool TOOLTIPS were visible but
+NOT the tool ICONS (the user's browser runs Windows "High Contrast").
+Root cause: the page never loaded `bpmn-font/css/bpmn.css` at all —
+the `bpmn` icon font that provides every palette glyph via a `:before`
+`content` was never defined, because the two CSS files the page did
+load contain zero `@font-face` rules — so the glyphs were missing for
+ALL users and ALL browsers (High Contrast was ruled out as the root
+cause but is covered in the verification via a `forced-colors: active`
+emulation). The fix was the one authorized line in `web/index.html`'s
+`<head>` (`<link rel="stylesheet" href="/bpmn-js/assets/bpmn-font/css/bpmn.css" />`
+over the existing `/bpmn-js/<file>` dist route), verified headless:
+CSS + `bpmn.woff2` 200, the `bpmn` face `loaded` in `document.fonts`,
+the first palette entry's `:before` carrying glyph U+E868 with a
+matching width signature — under normal rendering AND forced colors
+(full evidence + screenshots in `bin/logs/190-120-iconfix.md`).
+Notably, the human leg itself completed successfully WITH the icons
+missing: tooltips + canvas + inline rename + drag + Save were
+sufficient for load/inspect/edit/save — the palette is what a human
+needs for DRAWING, not for this leg's workload. Read-back protocol
+(this session): file API → raw XML diff against the prep baseline →
+moddle structural summaries → fresh `browser_navigate` →
+`__bpmn.load('human-edited.bpmn')` → `__bpmn.getState()`. Raw record:
+`bin/logs/190-120-r6-raw.md`.
+
+| check                          | result                                                                                                                                                                                                                                                                                                                                   | evidence (raw ref)                  |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| file API listing               | `GET /files` → 200; `human-edited.bpmn` in the 16-name listing                                                                                                                                                                                                                                                                           | `190-120-r6-raw.md` §Step 1         |
+| file API fetch                 | `GET /file?name=human-edited.bpmn` → 200, 4157 B, sha256 `eb85da04…` byte-identical to the on-disk file                                                                                                                                                                                                                                  | `190-120-r6-raw.md` §Step 1         |
+| raw-XML delta: renames         | FOUR renames (the baseline's six elements were all unnamed): `Activity_0y3fnmv` → "text in the first box", `Activity_14xbwag` → "some more text in the upper 2nd box", `Activity_18jggmj` → "the text in the lower box (moved the position too)", `Event_006yelo` → "the final state"; the start event and the gateway were left unnamed | `190-120-r6-raw.md` §Step 2, 1      |
+| raw-XML delta: move            | `Activity_18jggmj_di` bounds (540,280,100,80) → (610,370,100,80) (center 590,320 → 660,410); the two touching edges re-routed (`Flow_0xamaaj_di` to (430,225)(430,410)(610,410), `Flow_0oijekh_di` 4 → 3 waypoints ending (722,200)); the other four edges byte-identical                                                                | `190-120-r6-raw.md` §Step 2, 2–3    |
+| raw-XML delta: Modeler side fx | the four renamed shapes gained a `bpmndi:BPMNLabel` (three empty; the end event's with bounds (707,225,66,14) — the R5 rename side effect, carried 4× instead of 1×); the moved shape's DI re-appended last in the plane; no EOF newline (the compact `saveXML()` constant, R5)                                                          | `190-120-r6-raw.md` §Step 2, 4–5, 7 |
+| raw-XML delta: invariants      | same 6 elements (ids/types), same 6 sequence flows (ids, sourceRef/targetRef), same definitions/namespace/process/`isExecutable`; no element added or removed, no condition expressions — the model is the baseline + 4 names + 1 move                                                                                                   | `190-120-r6-raw.md` §Step 2, 6      |
+| bridge getState: renames       | `__bpmn.load('human-edited.bpmn')` → `{ ok: true }`; `getState()` carries ALL FOUR new names verbatim (and no `name` key on the two unnamed elements) — matching the XML exactly                                                                                                                                                         | `190-120-r6-raw.md` §Step 3         |
+| bridge getState: structure     | 6 shapes + 6 flows with the baseline topology intact; zoom 1, scroll (0,0) (the import-time viewport — the bridge load does not `fit-viewport`)                                                                                                                                                                                          | `190-120-r6-raw.md` §Step 3         |
+| bridge getState: the move      | n/a — `getState` mirrors the flow model; positions/DI are not in `getState` by design (the R5 finding), so the move is NOT model-visible there; the channel split is stated: names → both channels, move → raw-XML diff only                                                                                                             | `190-120-r6-raw.md` §Step 3         |
+
+**The user's subjective notes (verbatim).** "Working with the process
+was ok" — plus the icons report (tooltips visible, icons not; Windows
+"High Contrast"). Recorded in `190-120-r6-raw.md` and, with the
+finding, the root cause, the fix, and the verification, in
+`190-120-iconfix.md`.
+
+**R6 verdict.** The human-in-the-loop flow worked end to end: a human
+opened the page, inspected the agent-drawn canvas, renamed four
+elements inline, dragged one element (the two touching edges
+re-routed correctly), and saved via the page UI — and the agent read
+the entire edit back, with the four renames confirmed in BOTH the raw
+XML and the bridge's `getState()` (model-visible) and the move
+confirmed in the raw XML (DI-only, not in `getState` by design),
+structure intact in both channels (ACC-006 met). What the icons
+episode says for the proposal: a human needs the visual affordances
+the headless agent doesn't — every automated phase (130–180) passed
+with the palette glyphs missing, because the agent never looks at the
+canvas (R3), while the FIRST human-eyes review in this feature found
+a real rendering gap that was invisible to every automated gate; the
+fix was one line, but it was exactly the class of defect only a human
+leg can surface. The leg also shows the page surviving a real-world
+accessibility setting (High Contrast / forced colors) once the font
+is loaded — the glyphs are text and forced colors recolor rather than
+erase them — and the tooltip-plus-canvas sufficiency of the
+icons-missing leg (load/inspect/edit/save all worked) bounds the
+palette's role: it is the affordance for DRAWING, not for
+consuming-or-tweaking an existing diagram.
