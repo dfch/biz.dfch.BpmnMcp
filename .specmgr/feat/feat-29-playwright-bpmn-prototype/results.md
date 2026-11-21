@@ -312,11 +312,96 @@ probe), so the pixels do not replace the bridge.
 
 ## R5: Save fidelity (Phase 180)
 
-- pending: Phase 180 — Task B pixel-first (Load, double-click rename,
-  Save as `r5-pixel.bpmn`) and Task B bridge (`r5-bridge.bpmn`);
-  `bin/180-120-00-xml-diff.sh` generates the expected moddle
-  serialization and diffs both outputs (DI present? rename only?
-  re-save stability?). Not filled here: this phase (140) owns R3 only.
+**Protocol.** Task B under both strategies with the identical single
+rename (task `review-task`: name "Review order" → "Review order R5" —
+pixel: double-click inline edit on the page UI; bridge:
+`__bpmn.setProp`; expected producer: the same attribute set on the
+parsed moddle tree; no other mutation in either run): pixel-first
+Load → rename → Save as `r5-pixel.bpmn` (the bridge used as measurement
+channel only), bridge `load` → `setProp` → `save` as
+`r5-bridge.bpmn`, plus one re-save stability leg
+(`load('r5-bridge.bpmn')` → `save('r5-resave.bpmn')`, no mutation — the
+Modeler's own output round-tripped through the Modeler again). The
+expected producer (`bin/180-120-01-generate-expected.mjs`, run by
+`bin/180-120-00-xml-diff.sh` part 1) serializes the fixture + the same
+rename with the root `node_modules`' `bpmn-moddle` under EXACTLY the
+MCP server's save options, `moddle.toXML(root, { format: true })`
+(`serializeBpmn`, `apps/mcp-server/src/prc/moddle.ts`, read-only
+reference). Byte policy (stated once): everything compared as-written
+bytes, no newline normalization; the only known constant is the +1
+trailing newline the pre-commit EOF hook adds to `files/` artifacts AT
+COMMIT TIME — not in effect here (uncommitted on-disk bytes). Diff set:
+six pairs, each sha256 + unified diff, all in
+`bin/logs/180-120-xml-diff.log` (a non-empty diff is data, not a
+failure). Raw record: `bin/logs/180-120-r5-raw.md`; pixel-native label
+verify `180-100-r5-a-rename.yml` (L13).
+
+| #   | pair                                   | identical? (sha256) | diff size (lines)  | decisive diff                                                                                                                                                       | raw ref                        |
+| --- | -------------------------------------- | ------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| 1   | `r5-pixel` vs `expected-renamed`       | no                  | +30/−1 (whole doc) | serialization style (compact vs 2-space indent, no vs with EOF newline) + one extra empty `<bpmndi:BPMNLabel />` on `shape-task`; model content otherwise identical | `180-120-xml-diff.log` §pair 1 |
+| 2   | `r5-bridge` vs `expected-renamed`      | no                  | +30/−1 (whole doc) | same as pair 1 (the bridge save is byte-identical to the pixel save)                                                                                                | `180-120-xml-diff.log` §pair 2 |
+| 3   | `r5-pixel` vs `r5-bridge`              | yes (`dbcecb04…`)   | 0                  | byte-identical — the strategy does not affect serialization at all                                                                                                  | `180-120-xml-diff.log` §pair 3 |
+| 4   | `r5-pixel` vs `order-process` (orig.)  | no                  | +30/−1 (whole doc) | the rename (one `name` attribute) + the extra empty `BPMNLabel` + the serialization-style change; all ids/types/refs/coordinates unchanged                          | `180-120-xml-diff.log` §pair 4 |
+| 5   | `r5-bridge` vs `order-process` (orig.) | no                  | +30/−1 (whole doc) | same as pair 4                                                                                                                                                      | `180-120-xml-diff.log` §pair 5 |
+| 6   | `r5-resave` vs `r5-bridge`             | yes (`dbcecb04…`)   | 0                  | re-save byte-identical (load→save of the Modeler's own output drifts nothing)                                                                                       | `180-120-xml-diff.log` §pair 6 |
+
+The whole-document formatting swap hides the model facts, so the raw
+record isolates them by re-serializing both sides with the server's
+exact options: the original fixture is a byte-fixed point of that
+serializer (`expected-renamed` = original + exactly the 3 bytes
+" R5"), and the normalized `r5-pixel` vs `expected-renamed` diff is a
+SINGLE line — the extra `<bpmndi:BPMNLabel />`
+(`180-120-r5-raw.md` §Semantic isolation).
+
+**DI present?** Yes — every save carries the full `BPMNDiagram`/
+`BPMNPlane` with all three `BPMNShape`s and both `BPMNEdge`s at the
+fixture's exact coordinates/waypoints (pairs 4/5 show no coordinate
+line differing; run 1 on-disk confirm), and the expected producer
+keeps the DI too (it is the original + rename). The only DI delta of
+the Modeler saves: one extra empty `<bpmndi:BPMNLabel />` (no bounds)
+on the renamed shape.
+
+**Rename only?** At the flow-model level, exactly: the intended delta
+is the one `name` attribute and nothing else — ids, types,
+`isExecutable`, `targetNamespace`, flow refs, DI geometry all
+unchanged (the single-line normalized diff). In the saved bytes, the
+Modeler's rename command carries one DI-only side effect (that empty
+`BPMNLabel`, added by bpmn-js's `BpmnUpdater.updateBPMNLabel` on
+`element.updateLabel` — the command BOTH rename paths run; a pure
+moddle rename never touches the DI), so "rename only" holds for model
+content but not for byte content.
+
+**Re-save stable?** Yes — pair 6 byte-identical (sha256 match, 0
+diff lines): importing the Modeler's own compact output and saving
+again drifts nothing (the empty label round-trips without bounds, DI
+ordering stays, attribute order stays).
+
+**R5 verdict.** "Save fidelity" splits into two layers, and the data
+separates them cleanly. _Model-content fidelity: complete_ — the
+Modeler's `saveXML()` is a faithful transport of the diagram state: DI
+fully present, the rename the only flow-model delta, and the save
+idempotent on its own output (re-save byte-stable). _Byte fidelity
+against the MCP server's serialization: no, for two reasons, one
+cosmetic and one minor-semantic._ Cosmetic: the page/bridge save calls
+`saveXML()` with no options and the moddle-xml writer's default is
+`format: false` — compact single-line, no EOF newline — where the
+server's `serializeBpmn` passes `format: true` (2-space indent, EOF
+newline); that style difference is the whole +30/−1 shape of pairs
+1/2/4/5 and is invisible to any XML consumer. Minor-semantic: after a
+rename, the Modeler's output carries one extra empty
+`bpmndi:BPMNLabel` DI element a server-side rename would not write — a
+no-bounds, no-content artifact of the Modeler's label behavior (raw
+record §Mechanisms) that a byte-level diff against server-produced
+files flags but a semantic one does not. And pair 3 is the clean
+strategy result: the pixel and bridge saves are **byte-identical** —
+both funnel through the same `modeler.saveXML()`, so the automation
+strategy has zero effect on serialization; fidelity is a property of
+the save path, not of how the edit was driven. For the proposal:
+page-driven saves transport diagram state losslessly and
+reproducibly, but their artifacts are not drop-in byte-equivalents of
+the server's files (formatting, plus the label side effect after
+renames) — a consideration for any workflow that byte-diffs or
+version-stamps files across the two paths.
 
 ## R6: Human-in-the-loop (Phase 190)
 
