@@ -4,7 +4,7 @@ created: '2026-10-23T10:42:55.525+02:00'
 id: 818fac76-96fb-4e3c-acb8-e5520fab5913
 status: draft
 type: qa
-updated: '2026-11-18T06:40:53.107+01:00'
+updated: '2026-11-22T12:20:00.000+01:00'
 version: 1.0.0
 ---
 
@@ -1443,7 +1443,27 @@ repository's own committed code -- no untrusted input reaches
 2.1.31 (a breaking change) -- rejected, per the
 targeted-remediation precedent of feat-1's Phase 130.
 
+**Amended (2026-11-22, feat-33-dep-sec):** the residual is not
+removed, it is formally dismissed. `archunit` 2.5.5 (PR #33, merged
+as 1bbb477) still calls `minimatch.makeRe()` and still declares
+`minimatch ^10.0.1`, so the nested `archunit` -> `minimatch` 10.2.6
+override stays. Dependabot alert #1 (GHSA-g3hv-75wg-m249) was
+dismissed as "tolerable risk" on 2026-11-22 with a comment that
+cites DEC af53edf7-26d6-4773-9465-471377e42e54, which records the
+reason (dev-only consumer, glob patterns only from committed code)
+and the exit trigger (an `archunit` release that declares
+`minimatch >=11.0.1` or stops calling `makeRe()`: then remove the
+nested override). The residual is now tracked by that decision
+record and by the dependency-advisory policy in `SECURITY.md`, not
+here. `npm audit` still reports it locally (2 moderate entries for
+the one advisory); it is not a CI failure, because CI audits
+production dependencies at `low` (0 vulnerabilities) and the whole
+tree at `high` (feat-33-dep-sec REQ-003/REQ-004). The historical
+note above is kept unchanged.
+
 **Dependency audit note (picomatch)**: the advisory GHSA-fc5q-39xc-vjpf (high, "picomatch vulnerable to ReDoS through single-branch repeated extglobs") covers `picomatch <= 4.0.7`; no patched version exists as of 2026-11-18 (`first_patched_version: null`). It was published 2026-10-19 — before feat-11's Phase 100 gate, whose `npm audit` reported only the minimatch residual — but its advisory-database record was updated 2026-11-17T15:56:44Z, mid-Phase 110, so it surfaced as an environmental change rather than a dependency change of any feat-11 phase (Phase 110's only dependency delta is the dev-only `ajv`). The affected chain (verified with `npm ls picomatch`) is dev-tooling-only: `archunit` → `plantuml-parser` → `fast-glob` → `micromatch` → `picomatch` 2.3.2, and `vitest` 5 → `picomatch` 4.0.7 (deduped via `vite`, `fdir`, `tinyglobby`) — nothing in the published package's runtime dependency tree (`@modelcontextprotocol/sdk`, `bpmn-moddle`, `bpmnlint`, `bpmn-js`, `pino`, `pino-roll`, `zod`). No in-phase fix exists: `npm audit fix --force` would downgrade `vitest` 5.1.0 → 3.1.4 and `archunit` 2.5.4 → 2.1.31 (breaking changes against the pinned toolchain) — rejected, per the same targeted-remediation precedent as the minimatch note above. The practical risk is low, as with the minimatch residual: the ReDoS path requires attacker-crafted glob patterns, and the dev-only consumers here receive glob inputs from this repository's own committed code — no untrusted input reaches `picomatch`. Tracked here, alongside the minimatch residual (and recorded in the feat-11 plan's ACC-001 and Out-of-Scope bullet, extended 2026-11-18 at the user's decision) until a fixed `picomatch` (> 4.0.7) ships and the toolchain upgrades past it.
+
+**Update (2026-11-22, merge of dev into feat-11):** GitHub withdrew advisory GHSA-fc5q-39xc-vjpf on 2026-11-18 (`withdrawn_at` 2026-11-18T15:38:56Z, verified with `gh api /advisories/GHSA-fc5q-39xc-vjpf`), and `npm audit` no longer reports it, so the picomatch residual no longer applies. The note above is kept unchanged as the historical record.
 
 ## Flexibility
 

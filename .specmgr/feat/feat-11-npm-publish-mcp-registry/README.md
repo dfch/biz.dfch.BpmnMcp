@@ -4,7 +4,7 @@ created: '2026-11-01T13:06:50.041+01:00'
 id: feat-11-npm-publish-mcp-registry
 status: planning
 type: feat
-updated: '2026-11-18T14:04:01.823+01:00'
+updated: '2026-11-22T12:20:00.000+01:00'
 version: 1.0.0
 ---
 
@@ -30,7 +30,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 ### Acceptance Criteria
 
-- [ ] ACC-001: On a clean clone, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass from the repository root, `npm audit` reports no vulnerabilities other than the two documented residuals (archunit → minimatch 10.2.6, GHSA-g3hv-75wg-m249; and picomatch ≤ 4.0.7, GHSA-fc5q-39xc-vjpf — dev-tooling chain only, no patched version as of 2026-11-17; both tracked in QA 7.0030), and `uvx pre-commit run --all-files` passes.
+- [ ] ACC-001: On a clean clone, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass from the repository root, `npm audit --omit=dev --audit-level=low` and `npm audit --audit-level=high` (the CI audit gates, feat-33-dep-sec) pass, `npm audit` reports no vulnerabilities other than the documented, dismissed dev-only residual (archunit → minimatch 10.2.6, GHSA-g3hv-75wg-m249, moderate, reported as 2 moderate entries for the one advisory; Dependabot alert #1 dismissed as tolerable risk per DEC af53edf7-26d6-4773-9465-471377e42e54), and `uvx pre-commit run --all-files` passes. The picomatch ≤ 4.0.7 residual (GHSA-fc5q-39xc-vjpf) that this criterion also listed from 2026-11-18 no longer applies: GitHub withdrew that advisory on 2026-11-18 (15:38:56Z), and `npm audit` no longer reports it (QA 7.0030).
 - [ ] ACC-002: `npm pack` produces a tarball whose file list is exactly the REQ-003 set; the test leg fails on any extra or missing file.
 - [ ] ACC-003: After `prepack`, `dist/index.js` starts with `#!/usr/bin/env node` and carries the exec bit; `src/index.ts` is byte-unchanged (the license gate still passes); the package-directory `LICENSE` is byte-identical to the repository root's.
 - [ ] ACC-004: The clean-environment packed-artifact leg installs the tarball into a temporary prefix, launches the `bin`, and the MCP handshake over stdio lists exactly the seven Stage 1 tools (`import`, `export`, `create`, `change`, `parse`, `validate`, `preview`) — matching the set registered on `dev` (see, e.g., the in-process tool list in `apps/mcp-server/src/server.ts`), so a future tool-surface change updates one source, not this spec.
@@ -58,7 +58,8 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 - SSE / streamable-http transports and any `remotes` manifest entries: the `stdio`-only exclusion stays (the manifest declares `stdio` only); the `preview` feature (feat-20, done) delivered a browser viewer only (no additional MCP transport; the preview server binds 127.0.0.1), so Stage 1 is complete and SSE/streamable-http (if ever pursued) is an open follow-up without an owning feature.
 - Docker/OCI package entries and MCPB bundles.
 - Private or test registries (npm has no TestPyPI; the staging legs are the `--dry-run`/`npm pack` test legs and the clean-environment install).
-- Remediating the documented audit residuals: archunit → minimatch 10.2.6 (GHSA-g3hv-75wg-m249; tracked in QA 7.0030 until a minimatch-11-compatible archunit release ships) and picomatch ≤ 4.0.7 (GHSA-fc5q-39xc-vjpf, dev-tooling chain only; tracked in QA 7.0030 until a fixed picomatch ships and the toolchain upgrades past it).
+- Remediating the documented archunit → minimatch 10.2.6 audit residual (dismissed as tolerable risk and tracked in DEC af53edf7-26d6-4773-9465-471377e42e54 and `SECURITY.md` until a minimatch-11-compatible archunit release ships; QA 7.0030 as amended by feat-33-dep-sec).
+- Remediating the picomatch ≤ 4.0.7 residual (GHSA-fc5q-39xc-vjpf, dev-tooling chain only), recorded 2026-11-18: moot since GitHub withdrew the advisory on 2026-11-18 (QA 7.0030).
 - The implementation of the Stage 1 tools (`create`, `change`, `validate`, `parse`, `preview`): already complete on `dev` (feat-17/18/19/20, all `done`); this feature only packages and publishes.
 
 ### Dependencies
@@ -70,6 +71,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 - FEAT feat-12-node-26-minimum (status `done`, PR #13 merged as `e07c184`): the `node >= 26` engines floor this feature publishes (DEC 5185d651-7283-4b1d-87e0-272795d15edf).
 - FEAT feat-17-create-change-tools (status `done`, PR #21), FEAT feat-18-parse-tool (status `done`, PR #22), FEAT feat-19-validate-tool (status `done`, PR #23), and FEAT feat-20-preview-tool (status `done`, PR #24): the five remaining Stage 1 tools that complete the seven-tool handshake surface this feature packages (and, for feat-20, the `bpmn-js` dependency shipped in the package).
 - GitHub issue #11: the planning anchor for this feature.
+- FEAT feat-33-dep-sec: the CI dependency-audit gates and the security policy must be in place before anything is published to npm or the MCP Registry.
 
 #### Blocks
 
@@ -87,7 +89,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 **Offline validation.** The `2025-12-11` server schema is vendored as a committed fixture (source URL + fetch date recorded in the test); the gate never fetches from `static.modelcontextprotocol.io`. `mcp-publisher`'s own validation at publish time is distribution-time network use, the same class as publishing to PyPI itself.
 
-**CI parity.** The publish gate job mirrors `ci.yml`'s build job (the five commands) plus the tag/version check; `npm audit` and `pre-commit` remain local gates, as they are today in `ci.yml` (parity recorded, not a gap to close here). Actions are pinned by SHA with the version in a comment, and `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` is set, per `ci.yml`.
+**CI parity.** The publish gate job mirrors `ci.yml`'s build job (the five commands plus the two `npm audit` gates that feat-33-dep-sec added to it: `npm audit --omit=dev --audit-level=low` and `npm audit --audit-level=high`) plus the tag/version check, so nothing is published past a failing dependency audit. `npm audit` is a CI gate now, not a local gate; `pre-commit` remains a local gate, as it is today in `ci.yml` (parity recorded, not a gap to close here). Actions are pinned by SHA with the version in a comment, and `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` is set, per `ci.yml`.
 
 **Three user decisions (resolved, user, 2026-11-01).** (1) Registry name: `io.github.dfch/biz-dfch-bpmnmcp` — mirrors the sibling's `io.github.dfch/biz-dfch-specmgr` (kebab-cased package name; npm's dots become hyphens); registry names are effectively permanent once the first publish lands. (2) First public version: `0.1.0` — matches the sibling's first publish; the "signals Stage 1 partial (five of the seven tools still deferred)" claim is stale — Stage 1 is complete as of feat-20 (PR #24). The manifest has carried `0.1.0` since the feat-1 scaffold commit, so the first release requires no version bump (the bump step applies from the next release onward). (3) Release branch: fast-forward-only merge of `dev` into `main`, tag on `main` (sibling parity). `main` is dormant today (initial commit only, a strict ancestor of `dev` — the ff-merge is verified possible); the release procedure (REQ-008) establishes the release line, and the first dev→main merge brings in everything committed to `dev` to date.
 
@@ -146,6 +148,10 @@ None for Phases 100–120. The user-side prerequisites (npm account, `NPM_TOKEN`
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-22 12:20:00.000+01:00 - Merged dev (feat-33-dep-sec, PR #37); audit steps in publish.yml
+
+Merged `origin/dev` into `feat-11` to bring PR #28 up to date: `dev` now carries FEAT feat-33-dep-sec (PR #37, merged as `6e678fc`) — the two CI `npm audit` gates in `ci.yml`, the Dependabot grouping, the `SECURITY.md` dependency-advisory policy, DEC af53edf7-26d6-4773-9465-471377e42e54, and feat-33's amendments to this plan (ACC-001's CI audit gates and the dismissed minimatch residual, the Out-of-Scope residual bullet, the feat-33 Depends-On entry, the CI-parity Design Note) and to QA 7.0030. The two conflicts (this README and the QA) were resolved keeping both sides. The picomatch residual (GHSA-fc5q-39xc-vjpf) that this plan documented on 2026-11-18 no longer applies: GitHub withdrew the advisory on 2026-11-18 (15:38:56Z), and `npm audit` now reports only the minimatch residual; ACC-001, the Out-of-Scope bullet, and QA 7.0030 record this, with the 2026-11-18 note kept as history. The `gates` job of `.github/workflows/publish.yml` now runs `npm audit --omit=dev --audit-level=low` and `npm audit --audit-level=high` right after `npm ci`, with the same step names and comments as `ci.yml`, so nothing is published past a failing dependency audit. This closes the gap the CI-parity Design Note names (the publish gate job mirrors `ci.yml`'s build job, audit gates included) and extends REQ-007 (a) / Task 120.100's gate job; it also makes ACC-001's two audit commands CI gates on the publish path. `CONTRIBUTING.md` section 8 (step 6) now names the two audit gates in the publish gate job.
 
 #### 2026-11-18 14:04:01.823+01:00 - PR #28 opened (Task 120.120 complete)
 
