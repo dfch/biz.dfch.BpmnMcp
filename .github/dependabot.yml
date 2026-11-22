@@ -18,7 +18,23 @@ updates:
     ignore:
       - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
+    # Group routine minor and patch version updates into one PR per
+    # ecosystem. `applies-to: version-updates` keeps security updates out of
+    # the group, so each advisory still gets its own PR (feat-33, REQ-006).
+    groups:
+      minor-and-patch:
+        applies-to: 'version-updates'
+        patterns: ['*']
+        update-types: ['minor', 'patch']
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
       interval: 'weekly'
+    # Group routine minor and patch version updates into one PR per
+    # ecosystem. `applies-to: version-updates` keeps security updates out of
+    # the group, so each advisory still gets its own PR (feat-33, REQ-006).
+    groups:
+      minor-and-patch:
+        applies-to: 'version-updates'
+        patterns: ['*']
+        update-types: ['minor', 'patch']

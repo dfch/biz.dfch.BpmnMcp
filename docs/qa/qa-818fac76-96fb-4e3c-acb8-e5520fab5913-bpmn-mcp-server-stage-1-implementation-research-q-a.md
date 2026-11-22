@@ -4,7 +4,7 @@ created: '2026-10-23T10:42:55.525+02:00'
 id: 818fac76-96fb-4e3c-acb8-e5520fab5913
 status: draft
 type: qa
-updated: '2026-10-24T14:53:09.961+02:00'
+updated: '2026-11-22T11:34:31.881+01:00'
 version: 1.0.0
 ---
 
@@ -1442,6 +1442,24 @@ repository's own committed code -- no untrusted input reaches
 `minimatch`. `npm audit fix --force` would downgrade `archunit` to
 2.1.31 (a breaking change) -- rejected, per the
 targeted-remediation precedent of feat-1's Phase 130.
+
+**Amended (2026-11-22, feat-33-dep-sec):** the residual is not
+removed, it is formally dismissed. `archunit` 2.5.5 (PR #33, merged
+as 1bbb477) still calls `minimatch.makeRe()` and still declares
+`minimatch ^10.0.1`, so the nested `archunit` -> `minimatch` 10.2.6
+override stays. Dependabot alert #1 (GHSA-g3hv-75wg-m249) was
+dismissed as "tolerable risk" on 2026-11-22 with a comment that
+cites DEC af53edf7-26d6-4773-9465-471377e42e54, which records the
+reason (dev-only consumer, glob patterns only from committed code)
+and the exit trigger (an `archunit` release that declares
+`minimatch >=11.0.1` or stops calling `makeRe()`: then remove the
+nested override). The residual is now tracked by that decision
+record and by the dependency-advisory policy in `SECURITY.md`, not
+here. `npm audit` still reports it locally (2 moderate entries for
+the one advisory); it is not a CI failure, because CI audits
+production dependencies at `low` (0 vulnerabilities) and the whole
+tree at `high` (feat-33-dep-sec REQ-003/REQ-004). The historical
+note above is kept unchanged.
 
 ## Flexibility
 
