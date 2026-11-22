@@ -4,7 +4,7 @@ created: '2026-11-22T10:35:06.926+01:00'
 id: feat-33-dep-sec
 status: planning
 type: feat
-updated: '2026-11-22T11:28:14.399+01:00'
+updated: '2026-11-22T11:31:11.760+01:00'
 version: 1.0.0
 ---
 
@@ -56,8 +56,8 @@ security-update hygiene, and expands `SECURITY.md`.
 - [ ] ACC-002: Exactly one of these holds, matching the REQ-002 path taken. (A) The root `package.json` has no nested `archunit` override, `npm ls minimatch --all` shows no `minimatch` below 11.0.1, `npm audit` reports 0 moderate-or-higher advisories, and Dependabot alert #1 is closed as fixed. (B) The nested override is still there, `npm audit` reports only the residual (`archunit` → `minimatch 10.2.6`, moderate) and nothing else moderate-or-higher, Dependabot alert #1 is dismissed as "tolerable risk" with a comment citing the new decision record, the decision record exists, and both CI audit gates are green, because the residual is dev-only and below the `high` threshold.
 - [ ] ACC-003: On a clean checkout, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` (including the archunit suite) pass locally and in CI.
 - [x] ACC-004: `.github/workflows/ci.yml` has both audit steps (production at low, full tree at high). Each step is proven separately to fail: one test pins a production dependency to a version with a low or moderate advisory and shows that the production step fails, and another pins a dev dependency to a version with a high or critical advisory and shows that the full-tree step fails. The proof is a CI run on a draft PR (closed without merge), with each failing run's link recorded in a Progress Update entry.
-- [ ] ACC-005: The CodeQL default setup is `configured` for actions, javascript-typescript, and python, and its last scheduled run on `dev` or `main` is green. The result is recorded in a Progress Update entry.
-- [ ] ACC-006: `.github/dependabot.yml` has the minor/patch grouping with `applies-to: version-updates` for the npm and github-actions ecosystems, keeps the existing TypeScript-major ignore rule (DEC 5185d651), and Dependabot security updates are enabled in the repository settings.
+- [x] ACC-005: The CodeQL default setup is `configured` for actions, javascript-typescript, and python, and its last scheduled run on `dev` or `main` is green. The result is recorded in a Progress Update entry.
+- [x] ACC-006: `.github/dependabot.yml` has the minor/patch grouping with `applies-to: version-updates` for the npm and github-actions ecosystems, keeps the existing TypeScript-major ignore rule (DEC 5185d651), and Dependabot security updates are enabled in the repository settings.
 - [ ] ACC-007: `SECURITY.md` covers every item in REQ-007, including the 5-business-day acknowledgement, and GitHub private vulnerability reporting is enabled for the repository. `SECURITY.md` is documentation, so it needs no SPDX header (CONSTITUTION §1: documentation is covered by `LICENSE`).
 - [ ] ACC-008: QA 818fac76 7.0030's audit note, the gate list in `CONTRIBUTING.md`, and FEAT feat-11-npm-publish-mcp-registry (ACC-001, its out-of-scope residual line, and its CI-parity note) match the outcome of this feature.
 
@@ -129,9 +129,9 @@ security-update hygiene, and expands `SECURITY.md`.
 
 #### Phase 120: Scanning and Dependabot hygiene
 
-- [ ] Task 120.100: Confirm the CodeQL default-setup state (actions, javascript-typescript, python) and its last scheduled run, and record the result in a Progress Update entry.
-- [ ] Task 120.110: Add minor/patch `groups` with `applies-to: version-updates` to the npm and github-actions ecosystems in `.github/dependabot.yml`, and keep the TypeScript-major ignore rule.
-- [ ] Task 120.120: Enable Dependabot security updates in the repository settings, and confirm that they are on.
+- [x] Task 120.100: Confirm the CodeQL default-setup state (actions, javascript-typescript, python) and its last scheduled run, and record the result in a Progress Update entry.
+- [x] Task 120.110: Add minor/patch `groups` with `applies-to: version-updates` to the npm and github-actions ecosystems in `.github/dependabot.yml`, and keep the TypeScript-major ignore rule.
+- [x] Task 120.120: Enable Dependabot security updates in the repository settings, and confirm that they are on.
 
 #### Phase 130: Security policy
 
@@ -145,23 +145,65 @@ security-update hygiene, and expands `SECURITY.md`.
 
 ### Current Status
 
-**As of 2026-11-22**: Phase 110 done. `ci.yml` has both audit
-steps after `npm ci` ("Audit production dependencies (low)": `npm
-audit --omit=dev --audit-level=low`; "Audit all dependencies (high)":
-`npm audit --audit-level=high`), and each step was proven to fail on
-its own on throwaway draft PR #36, which is closed without merge and
-whose branch is deleted (ACC-004 met). `CONTRIBUTING.md` lists `npm
-audit` as a CI gate with both thresholds. Locally, both gates exit 0
-on feat-33. ACC-002 (B) stays open until both gates are green in CI on
-the pushed feat-33 branch. Phase 100 took the fallback path (REQ-002
-B): the nested archunit → `minimatch 10.2.6` override stays (DEC
-af53edf7-26d6-4773-9465-471377e42e54) and Dependabot alert #1 is
-dismissed as "tolerable risk". Next: Phase 120 (scanning and
-Dependabot hygiene).
+**As of 2026-11-22**: Phase 120 done. The CodeQL default setup is
+`configured` (actions, javascript-typescript, python; weekly, `default`
+query suite, `remote` threat model), and its most recent scheduled
+run on `dev` (the default branch) is green (ACC-005 met).
+`.github/dependabot.yml` groups minor and patch version updates
+(`applies-to: 'version-updates'`) for npm and github-actions, keeps
+the TypeScript-major ignore rule, and Dependabot security updates are
+enabled (ACC-006 met). Phase 110 is done (ACC-004 met): both CI audit
+gates are in `ci.yml` and were each proven to fail on draft PR #36.
+Phase 100 took the fallback path (REQ-002 B, DEC
+af53edf7-26d6-4773-9465-471377e42e54, alert #1 dismissed as
+"tolerable risk"). ACC-002 (B) stays open until both gates are green
+in CI on the pushed feat-33 branch. Next: Phase 130 (security policy).
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-22 10:31:11.755Z - Phase 120 done: scanning and Dependabot hygiene
+
+Task 120.100: `gh api repos/dfch/biz.dfch.BpmnMcp/code-scanning/default-setup`
+returns `state: configured`, languages `actions`, `javascript`,
+`javascript-typescript`, `python`, `typescript` (GitHub lists the
+aliases `javascript` and `typescript` next to `javascript-typescript`),
+`query_suite: default`, `threat_model: remote`, `schedule: weekly`,
+`updated_at: 2026-11-16T04:58:39Z`. The default branch is `dev`. Every
+CodeQL run has `event: dynamic`, so the event does not tell scheduled
+runs apart from push runs; the run name / display title does
+("Scheduled", "Push on dev", "PR #N", "CodeQL Setup"). The most recent
+scheduled run is
+[44275303586](https://github.com/dfch/biz.dfch.BpmnMcp/actions/runs/44275303586)
+(display title "Scheduled", `dev`, head 37eba32, 2026-11-18T09:22:27Z,
+conclusion `success`), and its three jobs "Analyze (actions)",
+"Analyze (javascript-typescript)", and "Analyze (python)" all
+succeeded. It is the only scheduled run since the setup run
+[43807152997](https://github.com/dfch/biz.dfch.BpmnMcp/actions/runs/43807152997)
+("CodeQL Setup", 2026-11-16, success); the next weekly run is not due
+yet. The later push runs on `dev` are also green, the newest being
+[45011675229](https://github.com/dfch/biz.dfch.BpmnMcp/actions/runs/45011675229)
+(2026-11-22). No CodeQL run exists on `main`.
+
+Task 120.110: `.github/dependabot.yml` has a `minor-and-patch` group
+(`applies-to: 'version-updates'`, `patterns: ['*']`, `update-types:
+['minor', 'patch']`) in both the npm and the github-actions entries,
+with a comment that security updates stay ungrouped (one PR per
+advisory). The TypeScript-major ignore rule (DEC 5185d651) and the
+SPDX header are unchanged. The file loads with `yaml.safe_load`,
+validates against the SchemaStore `dependabot-2.0.json` schema, and
+passes `npm run format:check`.
+
+Task 120.120: `gh api repos/dfch/biz.dfch.BpmnMcp/automated-security-fixes`
+returns `{"enabled":true,"paused":false}`, and
+`gh api repos/dfch/biz.dfch.BpmnMcp/vulnerability-alerts` returns
+`204 No Content` (Dependabot alerts on). Security updates were already
+enabled, so no repository setting was changed; this task is a
+confirmation only.
+
+ACC-005 and ACC-006 are met. The new grouping takes effect once the
+change is merged into `dev`.
 
 #### 2026-11-22 10:28:14.394Z - Phase 110 done: CI audit gates
 
