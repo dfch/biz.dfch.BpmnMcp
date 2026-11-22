@@ -350,4 +350,4 @@ raw logs under `bin/logs/`).
 - cf12c48 — Phase 180: the R5 save-fidelity evidence
 - 5896219 — Phase 190 prep: stage the R6 human-in-the-loop canvas
 - c314cfe — Phase 190: the R6 human-in-the-loop evidence and the palette icon fix
-- PR: pending - created after this close (see the following docs commit)
+- PR #30: https://github.com/dfch/biz.dfch.BpmnMcp/pull/30 (base dev; the Playwright + bpmn-js Modeler evidence run; the feature status was flipped to review in 11f76a9 before the PR was opened)
