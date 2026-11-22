@@ -30,7 +30,7 @@
     "@types/node": "^26.6.6",
     "@vitest/coverage-v8": "^5.1.0",
     "archunit": "^2.5.4",
-    "eslint": "^10.14.0",
+    "eslint": "^10.15.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.10.1",
     "typescript": "^5.6.3",
