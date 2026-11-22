@@ -4,7 +4,7 @@ created: '2026-11-22T10:35:06.926+01:00'
 id: feat-33-dep-sec
 status: review
 type: feat
-updated: '2026-11-22T11:38:34.561+01:00'
+updated: '2026-11-22T12:02:24.794+01:00'
 version: 1.0.0
 ---
 
@@ -53,8 +53,8 @@ security-update hygiene, and expands `SECURITY.md`.
 ### Acceptance Criteria
 
 - [x] ACC-001: PR #33 is merged and the root lockfile carries `archunit` 2.5.5.
-- [ ] ACC-002: Exactly one of these holds, matching the REQ-002 path taken. (A) The root `package.json` has no nested `archunit` override, `npm ls minimatch --all` shows no `minimatch` below 11.0.1, `npm audit` reports 0 moderate-or-higher advisories, and Dependabot alert #1 is closed as fixed. (B) The nested override is still there, `npm audit` reports only the residual (`archunit` → `minimatch 10.2.6`, moderate) and nothing else moderate-or-higher, Dependabot alert #1 is dismissed as "tolerable risk" with a comment citing the new decision record, the decision record exists, and both CI audit gates are green, because the residual is dev-only and below the `high` threshold.
-- [ ] ACC-003: On a clean checkout, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` (including the archunit suite) pass locally and in CI.
+- [x] ACC-002: Exactly one of these holds, matching the REQ-002 path taken. (A) The root `package.json` has no nested `archunit` override, `npm ls minimatch --all` shows no `minimatch` below 11.0.1, `npm audit` reports 0 moderate-or-higher advisories, and Dependabot alert #1 is closed as fixed. (B) The nested override is still there, `npm audit` reports only the residual (`archunit` → `minimatch 10.2.6`, moderate) and nothing else moderate-or-higher, Dependabot alert #1 is dismissed as "tolerable risk" with a comment citing the new decision record, the decision record exists, and both CI audit gates are green, because the residual is dev-only and below the `high` threshold.
+- [x] ACC-003: On a clean checkout, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` (including the archunit suite) pass locally and in CI.
 - [x] ACC-004: `.github/workflows/ci.yml` has both audit steps (production at low, full tree at high). Each step is proven separately to fail: one test pins a production dependency to a version with a low or moderate advisory and shows that the production step fails, and another pins a dev dependency to a version with a high or critical advisory and shows that the full-tree step fails. The proof is a CI run on a draft PR (closed without merge), with each failing run's link recorded in a Progress Update entry.
 - [x] ACC-005: The CodeQL default setup is `configured` for actions, javascript-typescript, and python, and its last scheduled run on `dev` or `main` is green. The result is recorded in a Progress Update entry.
 - [x] ACC-006: `.github/dependabot.yml` has the minor/patch grouping with `applies-to: version-updates` for the npm and github-actions ecosystems, keeps the existing TypeScript-major ignore rule (DEC 5185d651), and Dependabot security updates are enabled in the repository settings.
@@ -97,7 +97,7 @@ security-update hygiene, and expands `SECURITY.md`.
 - Compatibility check: Task 100.105 first inspects the archunit 2.5.5 package source and changelog for `makeRe` use (the reason for the nested override in QA 7.0030). If 2.5.5 still calls `minimatch.makeRe()`, the main path is not attempted and the fallback is taken. A green `npm test` is weak evidence on its own, because the architecture suite may not run every archunit code path that uses `makeRe`, so the source inspection is the deciding check and the suite is a confirmation.
 - Fallback path: keep the nested override, dismiss alert #1 as "tolerable risk" (dev-only consumer, glob patterns come only from this repository's committed code, so the vulnerable path is not reachable by untrusted input), and record a new decision record. This is a re-plan point: record it in Decisions Made and switch to ACC-002 (B). `npm audit` still reports the residual locally, and the CI full-tree gate stays green because the residual is moderate and the threshold is high.
 - Audit thresholds: production code ships to users, so any advisory of severity low or higher there fails CI. Dev tooling runs only on developer and CI machines with repo-controlled inputs, so only high and critical advisories fail CI there. Moderate dev-only advisories are handled through Dependabot alerts and this policy.
-- New advisory against an unchanged lockfile: a newly published advisory can turn CI red on every open PR without any change in them. Triage policy (to go into `SECURITY.md`): the maintainer fixes it in a dedicated PR to `dev` (update, override, or documented dismissal) before other PRs merge. A temporary allow is acceptable only as an explicit, dated `SECURITY.md` entry naming the advisory and the follow-up, never by lowering the audit thresholds. `npm audit` needs the npm registry to be reachable; a registry outage fails the step, and the fix is to re-run the job, not to skip the step.
+- New advisory against an unchanged lockfile: a newly published advisory can turn CI red on every open PR without any change in them. Triage policy (to go into `SECURITY.md`): the maintainer fixes it in a dedicated PR to `dev` (update, override, or documented dismissal) before other PRs merge. A temporary allow is acceptable only as an explicit, dated `SECURITY.md` entry naming the advisory and the follow-up, never by lowering the audit thresholds. (Superseded by the 2026-11-22 review follow-up, see Decisions Made: there is no temporary allow, because `npm audit` has no allowlist. While an advisory is at or above a gate threshold, CI stays red until an update or an exact-version override lands in a dedicated PR to `dev`; a dismissal does not change `npm audit`.) `npm audit` needs the npm registry to be reachable; a registry outage fails the step, and the fix is to re-run the job, not to skip the step.
 - CodeQL: the default setup (weekly, `default` query suite, `remote` threat model) is already configured for actions, javascript-typescript, and python. The "skipping" status on Dependabot PRs is expected default-setup behaviour, not a gap.
 - Dependabot: the `groups` entries use `applies-to: version-updates` explicitly (rather than relying on the default) so security updates are never grouped and stay one PR per advisory.
 - The audit steps go after `npm ci` in the existing single `build` job, with `permissions: contents: read` unchanged. `ci.yml` runs on `push` only for `main`/`dev` and otherwise on `pull_request`, so the gate-failure proof (Task 110.120) needs a draft PR.
@@ -139,7 +139,7 @@ security-update hygiene, and expands `SECURITY.md`.
 - [x] Task 130.110: Confirm that private vulnerability reporting is enabled and that the reporting link in `SECURITY.md` opens the GitHub report form.
 - [x] Task 130.112: Amend the QA 818fac76 7.0030 "Dependency audit note (minimatch)": the residual is removed (main path) or formally dismissed with a reference to the new decision record (fallback path).
 - [x] Task 130.114: Update FEAT feat-11-npm-publish-mcp-registry: ACC-001's residual baseline, the out-of-scope residual line, and the CI-parity note (`npm audit` is now a CI gate).
-- [x] Task 130.120: Check every acceptance criterion and the CONSTITUTION, then mark the feature done. The check is done. ACC-002 (B) and ACC-003 wait for green CI on the pushed feat-33 branch, and the orchestrator sets the feature status to `review` (not `done`).
+- [x] Task 130.120: Check every acceptance criterion and the CONSTITUTION, then mark the feature done. The check is done. ACC-002 (B) and ACC-003 are met with green CI on PR #37 (run 45013722456), and the feature status is `review` (not `done`).
 
 ## Progress
 
@@ -150,18 +150,76 @@ security-update hygiene, and expands `SECURITY.md`.
 the 5-business-day acknowledgement, the dependency-advisory policy,
 and the CodeQL note), confirmed that GitHub private vulnerability
 reporting is enabled, amended QA 818fac76 7.0030, and updated FEAT
-feat-11-npm-publish-mcp-registry (ACC-007 and ACC-008 met). ACC-001,
-ACC-004, ACC-005, ACC-006, ACC-007, and ACC-008 are met. ACC-002 (B)
-and ACC-003 are met locally and wait only for green CI on the pushed
-feat-33 branch. Phase 100 took the fallback path (REQ-002 B, DEC
+feat-11-npm-publish-mcp-registry (ACC-007 and ACC-008 met). Phase
+100 took the fallback path (REQ-002 B, DEC
 af53edf7-26d6-4773-9465-471377e42e54, alert #1 dismissed as
-"tolerable risk"). Next: push feat-33, open the PR to `dev`, tick
-ACC-002 (B) and ACC-003 when its CI is green, and set the status to
-`review`.
+"tolerable risk"). All acceptance criteria, ACC-001 to ACC-008, are
+met. [PR #37](https://github.com/dfch/biz.dfch.BpmnMcp/pull/37)
+(feat-33 to `dev`) is open with green CI (run
+[45013722456](https://github.com/dfch/biz.dfch.BpmnMcp/actions/runs/45013722456)
+and all three CodeQL analyses), and the status is `review`. The
+post-implementation review fixes (G1, G2, D1 to D4) are applied in the
+working tree; I1 and I2 are deferred to a follow-up.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-22 11:01:28.237Z - Review follow-up
+
+The post-implementation review findings are addressed in the working
+tree (not committed):
+
+- G1 (`SECURITY.md`, "A new advisory against an unchanged lockfile"):
+  the temporary-allow route and the "Temporary allows" list are
+  removed. `npm audit` has no allowlist, and `ci.yml` never read that
+  list, so the route could not work. The section now says that while
+  an advisory is at or above a gate threshold, CI stays red until an
+  update or an exact-version override lands in a dedicated PR to
+  `dev`. "Never lower the thresholds, never skip the step; on a
+  registry outage, re-run the job" is kept. See Decisions Made.
+- G2 (`SECURITY.md`, "Fixing an advisory" and "Dismissing an
+  alert"): dismissing a Dependabot alert does not change `npm audit`.
+  A dismissal is a valid resolution only when the advisory is already
+  below both CI gate thresholds (a dev-only low or moderate advisory,
+  as alert #1 is). For a production advisory, or a high or critical
+  dev advisory, only an update or an override turns CI green.
+- D1 (`SECURITY.md`, "Code Scanning"): "Dependabot changes only
+  manifests and lockfiles" now covers npm PRs only. For
+  github-actions PRs, which change the SHA-pinned actions in
+  `.github/workflows/*.yml`, the text says that CodeQL's `actions`
+  analysis checks the workflow changes on `dev` after the merge (the
+  default setup runs on push to `dev`).
+- D2: the dismissal comment on Dependabot alert #1 now also names "or
+  stops calling `makeRe()`" as a second exit condition, matching DEC
+  af53edf7. GitHub does not allow editing the comment of an alert that
+  is already dismissed (HTTP 409), so the orchestrator reopened alert
+  #1 and dismissed it again as `tolerable_risk` at
+  2026-11-22T11:00:53Z with the new comment (ending "Exit: archunit on
+  minimatch >=11.0.1 or no makeRe()."). The original dismissal was at
+  2026-11-22T10:24:24Z.
+- D3: ACC-002 (B) and ACC-003 are ticked. Evidence: PR #37 CI run
+  [45013722456](https://github.com/dfch/biz.dfch.BpmnMcp/actions/runs/45013722456)
+  (head bb22303, `pull_request`), job `build`: "Audit production
+  dependencies (low)", "Audit all dependencies (high)", "Lint",
+  "Format check", "Build (type-check gate)", and "Run tests with
+  coverage" all `success`. `gh pr checks 37`: "Analyze (actions)",
+  "Analyze (javascript-typescript)", "Analyze (python)", "CodeQL", and
+  "build" all pass. Checked read-only with `gh run view 45013722456`
+  and `gh pr checks 37`. Current Status and the Task 130.120 note are
+  updated; the status is `review`.
+- D4: correction to the "Phase 100 done" entry (left unchanged, append
+  only). That entry says that alert #1 is dismissed, but the
+  orchestrator dismissed it at 2026-11-22T10:24:24Z, after the entry
+  was written (10:18:36Z). The Task 130.120 check in the "Phase 130
+  done" entry confirmed the dismissal.
+
+Deferred to a follow-up (see More Information):
+
+- I1: move the two audit steps into a separate CI job, so a new
+  advisory does not block lint, build, and tests.
+- I2: a scheduled audit run, so a newly published advisory is found
+  without a push or a pull request.
 
 #### 2026-11-22 10:36:01.958Z - Phase 130 done: security policy
 
@@ -394,6 +452,20 @@ advisories.
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
 
+#### 2026-11-22 11:01:28.237Z - No temporary allows for CI audit failures
+
+The review (G1) found that the temporary-allow route in `SECURITY.md`
+could not work: `npm audit` has no allowlist, and `ci.yml` does not
+read the "Temporary allows" list. The route and the list are removed,
+and no allowlist tool (for example a wrapper that filters `npm audit`
+output by advisory ID) is added. While an advisory is at or above a
+CI gate threshold, CI stays red until an update or an exact-version
+override lands in a dedicated PR to `dev`. The thresholds are never
+lowered and the audit steps are never skipped. Adding an allowlist
+tool was rejected for this feature: it adds a dependency or custom
+code to the gate, and it makes it possible to bypass the gate without
+a fix. This supersedes the temporary-allow sentence in Design Notes.
+
 #### 2026-11-22 10:18:36.463Z - Switch to the fallback path (ACC-002 B)
 
 archunit 2.5.5 still calls `minimatch.makeRe()`, which `minimatch`
@@ -446,3 +518,5 @@ dev-only advisories go through Dependabot alerts and this policy.
 Follow-up (not a blocker of this feature):
 
 - Upstream pin: archunit 2.5.5 still declares `minimatch ^10.0.1`. Once ArchUnitTS ships a release that declares `minimatch >=11.0.1`, the tree-wide `minimatch` override can be re-checked. In the fallback path, that release is also the trigger to remove the nested override and close the dismissal.
+- Separate audit job (review I1): move the two `npm audit` steps out of the `build` job into their own CI job, so a newly published advisory does not hide the lint, build, and test results.
+- Scheduled audit run (review I2): run the audit steps on a schedule (for example weekly on `dev`), so a newly published advisory is found even when no push or pull request happens.

@@ -76,7 +76,13 @@ Fix an advisory in this order of preference:
 2. Add an `overrides` entry in the root `package.json`, if no fixed
    version of the direct dependency exists yet.
 3. Dismiss the alert, if no fix is possible and the risk is accepted
-   (see "Dismissing an alert").
+   (see "Dismissing an alert"). This is only valid for an advisory
+   that is already below both CI audit thresholds.
+
+Dismissing a Dependabot alert does not change `npm audit`: the CI
+audit steps still report the advisory. For a production advisory, or
+a high or critical dev advisory, only an update (1) or an override (2)
+makes CI green again.
 
 Do not use `npm audit fix --force`: it can install breaking major
 versions or downgrades.
@@ -103,6 +109,13 @@ A Dependabot alert may be dismissed only with one of these reasons:
 - **Inaccurate**: the alert does not apply to how this repository uses
   the package.
 
+A dismissal is a valid resolution only when the advisory is already
+below both CI audit thresholds, that is, a low or moderate advisory
+in a dev-only dependency (as alert #1 below is). A dismissal does not
+change `npm audit`, so it cannot make a failing CI audit step pass.
+Do not dismiss an alert for a production advisory or for a high or
+critical dev advisory; update the dependency or add an override.
+
 Every dismissal has a comment that cites the decision record that
 accepts the risk, including its exit trigger. The other dismissal
 reasons ("fix started", "no bandwidth", "not used") are not
@@ -128,21 +141,19 @@ Current dismissals:
 A newly published advisory can make CI fail on every open pull
 request, although none of them changed the dependencies. Then:
 
-1. The maintainer fixes it in a **dedicated pull request to `dev`**
-   (update, override, or documented dismissal, as above). Other pull
-   requests merge only after that fix is merged and they are rebased
-   or updated.
-2. If a fix is not possible at once, a **temporary allow** is
-   acceptable only as an explicit, dated entry in the "Temporary
-   allows" list below. The entry names the advisory, the reason, and
-   the follow-up (an issue or a pull request) that removes it.
+1. The maintainer fixes it in a **dedicated pull request to `dev`**:
+   an update of the dependency or an exact-version override, as
+   above. A dismissal does not help here, because it does not change
+   `npm audit`.
+2. While the advisory is at or above a CI audit threshold, CI stays
+   red. There is no temporary allow: `npm audit` has no allowlist.
+   Other pull requests merge only after the fix is merged and they
+   are rebased or updated.
 3. **Never lower the audit thresholds** and never remove or skip an
    audit step to make CI pass.
 4. `npm audit` needs the npm registry. If the step fails because the
    registry is not reachable, **re-run the job**. Do not skip the
    step.
-
-Temporary allows: none.
 
 ## Code Scanning
 
@@ -153,5 +164,9 @@ CodeQL code scanning runs in GitHub's **default setup** (weekly, the
 The default setup does not analyze pull requests opened by Dependabot.
 This is how GitHub designed it, not a gap in the setup: the CodeQL
 check on a Dependabot pull request shows as **skipping** (neutral).
-Dependabot changes only manifests and lockfiles, and CodeQL analyzes
-the code on `dev` again after the merge.
+A Dependabot pull request for npm changes only manifests and
+lockfiles, and CodeQL analyzes the code on `dev` again after the
+merge. A Dependabot pull request for GitHub Actions changes the
+SHA-pinned actions in `.github/workflows/*.yml`; CodeQL's `actions`
+analysis checks these workflow changes on `dev` after the merge (the
+default setup runs on every push to `dev`).
