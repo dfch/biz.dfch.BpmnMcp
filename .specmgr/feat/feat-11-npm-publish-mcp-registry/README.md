@@ -66,6 +66,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 - FEAT feat-2-prc-import-export (status `done`, PR #10 merged as `bed6cab`): the server, the `import`/`export` tools, the declared `bin`, the five `BPMN_MCP_*` variables, and the `version` resource this feature packages.
 - FEAT feat-1-bpmn-mcp-scaffold (status `done`, PR #2): the quality gates, `ci.yml`'s SHA-pinned action convention, the `BPMN_MCP_DOCS_DIR`/`prc` path model, and the logging configuration this feature extends.
 - GitHub issue #11: the planning anchor for this feature.
+- FEAT feat-33-dep-sec: the CI dependency-audit gates and the security policy must be in place before anything is published to npm or the MCP Registry.
 
 #### Blocks
 
