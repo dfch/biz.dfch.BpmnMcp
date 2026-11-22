@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-22T10:35:06.926+01:00'
 id: feat-33-dep-sec
-status: planning
+status: review
 type: feat
-updated: '2026-11-22T11:37:06.867+01:00'
+updated: '2026-11-22T11:38:34.561+01:00'
 version: 1.0.0
 ---
 
