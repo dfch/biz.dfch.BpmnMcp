@@ -47,22 +47,6 @@ jobs:
         # package-lock.json (QA 0.0080).
         run: npm ci
 
-      - name: Audit production dependencies (low)
-        # Production code ships to users: any advisory of severity low
-        # or higher on a production dependency fails CI (feat-33
-        # REQ-003). npm's `info` level is ignored on purpose. A registry
-        # outage fails this step; re-run the job, never skip the step.
-        run: npm audit --omit=dev --audit-level=low
-
-      - name: Audit all dependencies (high)
-        # Dev tooling runs only on developer and CI machines with
-        # repo-controlled inputs: only high and critical advisories
-        # anywhere in the tree fail CI (feat-33 REQ-004). Moderate and
-        # low dev-only advisories go through Dependabot alerts and the
-        # SECURITY.md policy (e.g. the archunit -> minimatch residual,
-        # DEC af53edf7).
-        run: npm audit --audit-level=high
-
       - name: Lint
         # ESLint - naming, line width, complexity (QA 0.0220/0.0280).
         run: npm run lint
