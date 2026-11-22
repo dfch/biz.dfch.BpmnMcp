@@ -1,0 +1,212 @@
+# SPDX-FileCopyrightText: 2026 Ronald Rink, d-fens GmbH
+# SPDX-License-Identifier: AGPL-3.0-only
+
+name: Publish to npm, GitHub, and the MCP Registry
+
+# The tag-driven publish pipeline (feat-11-npm-publish-mcp-registry,
+# REQ-007): a push of a `v*` tag runs, in order, (a) the gate job -
+# the five CI commands and the two dependency audit gates
+# (feat-33-dep-sec) re-run from the repository root (QA 0.0270)
+# plus the tag/version consistency check (the tag's version must equal
+# apps/mcp-server/package.json's version - a mismatch fails the
+# workflow before anything is published), (b) the npm publish of the
+# biz.dfch.bpmnmcp workspace package with the NPM_TOKEN repository
+# secret, (c) the GitHub Release for the tag with the npm pack
+# tarball attached (gh CLI, the sibling's pattern), and (d) the MCP
+# Registry publish with mcp-publisher via GitHub OIDC (the sibling's
+# steps verbatim). The sibling's PyPI jobs (uv build) do not transfer
+# - this repository publishes to npm. Tags are immutable, so there is
+# no concurrency block.
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  gates:
+    name: Gates
+    env:
+      # Opt-in to Node 24 to avoid Node 20 deprecation warnings (effective June 2026).
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # uses: actions/checkout@v7 (v7.0.1)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Check tag and version consistency
+        # The tag's version (the tag minus the leading `v`) must equal
+        # the app's package.json version - the single source of truth
+        # (Design Notes). Runs right after the checkout, so a
+        # mismatched tag fails the workflow before anything else runs
+        # and before anything is published (REQ-007).
+        run: |
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          PKG_VERSION=$(node -p "require('./apps/mcp-server/package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag v${TAG_VERSION} does not match the package version ${PKG_VERSION} (apps/mcp-server/package.json)."
+            exit 1
+          fi
+          echo "Tag v${TAG_VERSION} matches the package version ${PKG_VERSION}."
+
+      - name: Set up Node.js
+        # uses: actions/setup-node@v7 (v7.1.0)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Install dependencies
+        # `npm ci` at the root - the strict, lockfile-based install of
+        # all workspaces (QA 0.0180/0.0270); requires the committed
+        # package-lock.json (QA 0.0080).
+        run: npm ci
+
+      - name: Audit production dependencies (low)
+        # Production code ships to users: any advisory of severity low
+        # or higher on a production dependency fails CI (feat-33
+        # REQ-003). npm's `info` level is ignored on purpose. A registry
+        # outage fails this step; re-run the job, never skip the step.
+        run: npm audit --omit=dev --audit-level=low
+
+      - name: Audit all dependencies (high)
+        # Dev tooling runs only on developer and CI machines with
+        # repo-controlled inputs: only high and critical advisories
+        # anywhere in the tree fail CI (feat-33 REQ-004). Moderate and
+        # low dev-only advisories go through Dependabot alerts and the
+        # SECURITY.md policy (e.g. the archunit -> minimatch residual,
+        # DEC af53edf7).
+        run: npm audit --audit-level=high
+
+      - name: Lint
+        # ESLint - naming, line width, complexity (QA 0.0220/0.0280).
+        run: npm run lint
+
+      - name: Format check
+        # Prettier --check - K&R braces, quotes, semicolons, trailing
+        # commas (QA 0.0280).
+        run: npm run format:check
+
+      - name: Build (type-check gate)
+        run: npm run build
+
+      - name: Run tests with coverage
+        # @vitest/coverage-v8 (QA 0.0260); report-only in the first draft.
+        run: npm test -- --coverage
+
+  npm-publish:
+    name: Publish to npm
+    needs: [gates]
+    env:
+      # Opt-in to Node 24 to avoid Node 20 deprecation warnings (effective June 2026).
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # The npm automation token (repository secret); npm reads
+      # NODE_AUTH_TOKEN for the default registry (Design Notes: Auth).
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # uses: actions/checkout@v7 (v7.0.1)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Node.js
+        # uses: actions/setup-node@v7 (v7.1.0)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Publish to npm
+        # Publishes the biz.dfch.bpmnmcp workspace package (not the
+        # private root manifest); the prepack pipeline (build ->
+        # shebang -> exec bit -> LICENSE copy) runs automatically.
+        # --access public is explicit: the package is unscoped, so it
+        # is public by default.
+        run: npm publish --workspace=apps/mcp-server --access public
+
+  github-release:
+    name: Make GitHub Release
+    needs: [npm-publish]
+    env:
+      # Opt-in to Node 24 to avoid Node 20 deprecation warnings (effective June 2026).
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # uses: actions/checkout@v7 (v7.0.1)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Node.js
+        # uses: actions/setup-node@v7 (v7.1.0)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pack the npm tarball
+        # npm pack runs the prepack pipeline and writes the tarball
+        # into the workspace directory.
+        run: npm pack --workspace=apps/mcp-server
+
+      - name: Create GitHub Release
+        # The sibling's pattern: create the release for the tag (keep
+        # it when it already exists), then upload the tarball.
+        run: |
+          TAG=${{ github.ref_name }}
+          VERSION=${TAG#v}
+          gh release create ${TAG} --title "${TAG}" --generate-notes || true
+          gh release upload ${TAG} apps/mcp-server/biz.dfch.bpmnmcp-${VERSION}.tgz --clobber
+
+  mcp-registry:
+    name: Publish to MCP Registry
+    needs: [github-release]
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    permissions:
+      id-token: write
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # uses: actions/checkout@v7 (v7.0.1)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Verify tools 1
+        run: |
+          curl --version
+          jq --version
+          cat --version
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          chmod +x mcp-publisher
+
+      - name: Verify tools 2
+        run: |
+          ./mcp-publisher --version
+
+      - name: Update server.json version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > server.tmp && mv server.tmp server.json
+          cat server.json
+
+      - name: Authenticate to MCP Registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish

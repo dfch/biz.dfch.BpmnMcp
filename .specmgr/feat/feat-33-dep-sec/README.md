@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-22T10:35:06.926+01:00'
 id: feat-33-dep-sec
-status: review
+status: done
 type: feat
-updated: '2026-11-22T12:06:06.972+01:00'
+updated: '2026-11-22T12:16:29.655+01:00'
 version: 1.0.0
 ---
 
@@ -155,15 +155,21 @@ feat-11-npm-publish-mcp-registry (ACC-007 and ACC-008 met). Phase
 af53edf7-26d6-4773-9465-471377e42e54, alert #1 dismissed as
 "tolerable risk"). All acceptance criteria, ACC-001 to ACC-008, are
 met. [PR #37](https://github.com/dfch/biz.dfch.BpmnMcp/pull/37)
-(feat-33 to `dev`) is open with green CI (run
-[45013722456](https://github.com/dfch/biz.dfch.BpmnMcp/actions/runs/45013722456)
-and all three CodeQL analyses), and the status is `review`. The
-post-implementation review fixes (G1, G2, D1 to D4) are applied in the
-working tree; I1 and I2 are deferred to a follow-up.
+(feat-33 to `dev`) is merged into `dev` as `6e678fc`, and the status
+is `done`. The post-implementation review fixes (G1, G2, D1 to D4)
+are part of the merge; I1 and I2 are deferred to a follow-up.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-22 12:16:00.562+01:00 - Merged and done
+
+[PR #37](https://github.com/dfch/biz.dfch.BpmnMcp/pull/37) is merged
+into `dev` as `6e678fc`. The status is set to `done`. FEAT
+feat-11-npm-publish-mcp-registry (PR #28) merges `dev` and adds the
+two `npm audit` steps to the gate job of `publish.yml`, so nothing is
+published past a failing dependency audit.
 
 #### 2026-11-22 11:01:28.237Z - Review follow-up
 

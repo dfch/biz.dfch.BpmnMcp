@@ -206,3 +206,42 @@ against the package's own install location.
 3. Record the decision (question, options considered, choice,
    rationale) in the implementation Q&A under `docs/qa/`, following
    the existing pair style (QA 0.0210).
+
+---
+
+## 8. Releases
+
+The release procedure (REQ-008,
+feat-11-npm-publish-mcp-registry). `apps/mcp-server/package.json`'s
+`version` is the single source of truth (the MCP `version` resource
+reports it; `server.json`'s versions are synced from the tag by the
+publish workflow).
+
+1. **Date the changelog.** Move the `Unreleased` section of
+   `CHANGELOG.md` into a dated `## [x.y.z] - YYYY-MM-DD` section
+   (Keep a Changelog), and leave a fresh empty `## [Unreleased]` on
+   top.
+2. **Bump the version** in `apps/mcp-server/package.json` - except
+   for the first release (v0.1.0): the manifest has carried `0.1.0`
+   since the feat-1 scaffold, so it needs no bump (the bump applies
+   from the second release onward).
+3. **Commit** the changelog (and, where applicable, the version
+   bump) on `dev` as `chore(release): bump version to vX.Y.Z`.
+4. **Merge** `dev` into `main` **fast-forward only** - no merge
+   commit; a state that cannot fast-forward is a release blocker to
+   resolve on `dev` first.
+5. **Tag** `vX.Y.Z` **on `main`**.
+6. **Push the tag.** The push triggers
+   `.github/workflows/publish.yml`, which runs, in order: the gate
+   job (the five CI commands and the two `npm audit` gates of
+   section 6 re-run from the repository root, plus the tag/version
+   consistency check - a mismatched tag or a failing audit fails the
+   workflow before anything is published), the npm publish (the
+   `NPM_TOKEN` repository secret), the GitHub Release with the
+   `npm pack` tarball attached, and the MCP Registry publish
+   (`mcp-publisher` via GitHub OIDC, the `server.json` versions
+   synced from the tag).
+
+User-side prerequisites (not automated): the npmjs.com account with
+2FA and the `NPM_TOKEN` repository secret, and the MCP Registry
+GitHub App installed on this repository for OIDC.
