@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-18T15:16:37.073+01:00'
 id: feat-29-playwright-bpmn-prototype
-status: planning
+status: review
 type: feat
-updated: '2026-11-19T11:02:39.530+01:00'
+updated: '2026-11-22T01:54:52.095+01:00'
 version: 1.0.0
 ---
 
