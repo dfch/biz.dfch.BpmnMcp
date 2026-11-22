@@ -4,7 +4,7 @@ created: '2026-11-22T10:35:06.926+01:00'
 id: feat-33-dep-sec
 status: planning
 type: feat
-updated: '2026-11-22T10:46:45.324+01:00'
+updated: '2026-11-22T11:21:40.585+01:00'
 version: 1.0.0
 ---
 
@@ -52,7 +52,7 @@ security-update hygiene, and expands `SECURITY.md`.
 
 ### Acceptance Criteria
 
-- [ ] ACC-001: PR #33 is merged and the root lockfile carries `archunit` 2.5.5.
+- [x] ACC-001: PR #33 is merged and the root lockfile carries `archunit` 2.5.5.
 - [ ] ACC-002: Exactly one of these holds, matching the REQ-002 path taken. (A) The root `package.json` has no nested `archunit` override, `npm ls minimatch --all` shows no `minimatch` below 11.0.1, `npm audit` reports 0 moderate-or-higher advisories, and Dependabot alert #1 is closed as fixed. (B) The nested override is still there, `npm audit` reports only the residual (`archunit` → `minimatch 10.2.6`, moderate) and nothing else moderate-or-higher, Dependabot alert #1 is dismissed as "tolerable risk" with a comment citing the new decision record, the decision record exists, and both CI audit gates are green, because the residual is dev-only and below the `high` threshold.
 - [ ] ACC-003: On a clean checkout, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` (including the archunit suite) pass locally and in CI.
 - [ ] ACC-004: `.github/workflows/ci.yml` has both audit steps (production at low, full tree at high). Each step is proven separately to fail: one test pins a production dependency to a version with a low or moderate advisory and shows that the production step fails, and another pins a dev dependency to a version with a high or critical advisory and shows that the full-tree step fails. The proof is a CI run on a draft PR (closed without merge), with each failing run's link recorded in a Progress Update entry.
@@ -113,12 +113,12 @@ security-update hygiene, and expands `SECURITY.md`.
 
 #### Phase 100: Fix the current alert
 
-- [ ] Task 100.100: Review and merge PR #33 (archunit 2.5.5) into `dev`.
-- [ ] Task 100.105: Inspect the archunit 2.5.5 package source and changelog for `minimatch.makeRe()` use, and record the result in a Progress Update entry. If it is still used, skip Tasks 100.110 to 100.130 and go to Task 100.125.
-- [ ] Task 100.110: Remove the nested `archunit` → `minimatch` override from the root `package.json` and regenerate `package-lock.json`.
-- [ ] Task 100.120: Verify with `npm ls minimatch --all` and `npm audit`, and run the full local gate (lint, format:check, build, test with coverage). If the archunit suite fails, revert Task 100.110 and go to Task 100.125.
-- [ ] Task 100.125: Fallback only (REQ-002 B): keep the nested override, dismiss Dependabot alert #1 as "tolerable risk" with the reason from Design Notes, record a new decision record, and add a Decisions Made entry that switches to ACC-002 (B).
-- [ ] Task 100.130: Main path only: confirm that Dependabot alert #1 closes as fixed after the push.
+- [x] Task 100.100: Review and merge PR #33 (archunit 2.5.5) into `dev`.
+- [x] Task 100.105: Inspect the archunit 2.5.5 package source and changelog for `minimatch.makeRe()` use, and record the result in a Progress Update entry. If it is still used, skip Tasks 100.110 to 100.130 and go to Task 100.125.
+- [ ] Task 100.110: Remove the nested `archunit` → `minimatch` override from the root `package.json` and regenerate `package-lock.json`. Skipped, not applicable: archunit 2.5.5 still calls `minimatch.makeRe()` (Task 100.105), so the fallback path is taken.
+- [ ] Task 100.120: Verify with `npm ls minimatch --all` and `npm audit`, and run the full local gate (lint, format:check, build, test with coverage). If the archunit suite fails, revert Task 100.110 and go to Task 100.125. Skipped, not applicable: main path not attempted (Task 100.105).
+- [x] Task 100.125: Fallback only (REQ-002 B): keep the nested override, dismiss Dependabot alert #1 as "tolerable risk" with the reason from Design Notes, record a new decision record, and add a Decisions Made entry that switches to ACC-002 (B).
+- [ ] Task 100.130: Main path only: confirm that Dependabot alert #1 closes as fixed after the push. Skipped, not applicable: fallback path taken (Task 100.105).
 
 #### Phase 110: CI audit gates
 
@@ -145,16 +145,56 @@ security-update hygiene, and expands `SECURITY.md`.
 
 ### Current Status
 
-**As of 2026-11-22**: Planning. PR #33 is open with CI `build` green
-(CodeQL skipped, as expected for Dependabot PRs). Dependabot alert #1
-(GHSA-g3hv-75wg-m249) is open on the dev-only nested
-`minimatch@10.2.6`, which the existing nested archunit override keeps
-on purpose (QA 7.0030). `npm audit --omit=dev` is clean. No
-implementation work has started.
+**As of 2026-11-22**: Phase 100 done on the fallback path (REQ-002 B,
+ACC-002 B). PR #33 is squash-merged into `dev` as 1bbb477, and the
+lockfile carries archunit 2.5.5 (ACC-001 met). archunit 2.5.5 still
+calls `minimatch.makeRe()`, so the nested archunit → `minimatch
+10.2.6` override stays, and the residual is recorded in DEC
+af53edf7-26d6-4773-9465-471377e42e54. Dependabot alert #1 is dismissed
+as "tolerable risk" with a comment citing that DEC (dismissal
+performed by the orchestrator). `npm audit` reports only the residual
+(moderate); `npm audit --omit=dev` is clean. Next: Phase 110 (CI audit
+gates).
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-22 10:18:36.463Z - Phase 100 done: fallback path
+
+Task 100.100: PR #33 (archunit 2.5.4 → 2.5.5) was reviewed and
+squash-merged into `dev` as 1bbb477, and feat-33 was rebased onto it.
+`package-lock.json` carries `node_modules/archunit` 2.5.5.
+
+Task 100.105 result: archunit 2.5.5 still uses `minimatch.makeRe()`.
+`npm pack archunit@2.5.5` shows
+`dist/src/common/regex-factory.js:116`:
+`const ret = minimatch_1.minimatch.makeRe(pattern);`
+(`RegexFactory.globToRegExp`), and its `package.json` still declares
+`"minimatch": "^10.0.1"`. `npm pack minimatch@11.0.1` has no
+occurrence of `makeRe` anywhere (dist/commonjs, dist/esm, `.d.ts`).
+The ArchUnitTS v2.5.5 release note (2026-11-13) lists only "bump the
+minor-and-patch group across 1 directory with 9 updates" (dev
+dependencies); there is no `minimatch` change. The main path is
+therefore not attempted: Tasks 100.110, 100.120, and 100.130 are
+skipped as not applicable.
+
+Task 100.125: the nested override stays unchanged. The new decision
+record DEC af53edf7-26d6-4773-9465-471377e42e54 records the residual,
+the rejected options, and the exit trigger. Dependabot alert #1 is
+dismissed as "tolerable risk" with a comment citing the DEC (performed
+by the orchestrator). `npm audit` reports only GHSA-g3hv-75wg-m249 on
+`node_modules/archunit/node_modules/minimatch` (npm counts it as "2
+moderate", `minimatch` plus its dependent `archunit`), `npm audit
+--omit=dev` reports 0 vulnerabilities, and `npm ls minimatch --all`
+shows only archunit's copy on 10.2.6 (every other copy is 11.0.1).
+Locally, lint, format:check, and build pass, and `npm test --
+--coverage` passes 360 of 363 tests (2 skipped), including the
+archunit architecture suite and the license-header gate. One
+preview-server child-process test fails locally with `ECONNRESET`
+because the local shell runs Node 22.22.1, not the required Node 26
+(`.node-version`); Phase 100 changed only documentation. CI on Node 26
+is green for 1bbb477 (run 45011674894, "Lint and Test").
 
 #### 2026-11-22 09:46:45.330Z - Plan refined
 
@@ -177,6 +217,23 @@ advisories.
 ### Decisions Made
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-22 10:18:36.463Z - Switch to the fallback path (ACC-002 B)
+
+archunit 2.5.5 still calls `minimatch.makeRe()`, which `minimatch`
+11.0.1 removed (Task 100.105), so removing the nested override would
+break the architecture suite. This is the planned re-plan point: REQ-002
+(B) and ACC-002 (B) now apply, and REQ-002 (A) / ACC-002 (A) do not.
+The nested archunit → `minimatch 10.2.6` override stays, and
+Dependabot alert #1 is dismissed as "tolerable risk": archunit is a
+dev-only consumer, its glob patterns come only from this repository's
+committed code, so the vulnerable path is not reachable by untrusted
+input, and the advisory is moderate, below the CI full-tree `high`
+threshold. Replacing archunit (out of scope) and leaving the alert
+open were rejected. Recorded in DEC
+af53edf7-26d6-4773-9465-471377e42e54; its exit trigger is an
+ArchUnitTS release that declares `minimatch >=11.0.1` or stops calling
+`makeRe()`.
 
 #### 2026-11-22 09:34:31.589Z - Full dependency-security policy scope
 
