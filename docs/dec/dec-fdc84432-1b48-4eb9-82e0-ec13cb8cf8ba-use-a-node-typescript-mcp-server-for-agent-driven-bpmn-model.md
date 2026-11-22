@@ -2,9 +2,9 @@
 classification: null
 created: '2026-10-22T17:51:16.799+02:00'
 id: fdc84432-1b48-4eb9-82e0-ec13cb8cf8ba
-status: draft
+status: accepted
 type: dec
-updated: '2026-10-22T17:52:00.717+02:00'
+updated: '2026-11-22T13:35:13.446+01:00'
 version: 1.0.0
 ---
 
@@ -193,9 +193,42 @@ canvas-server process (web UI + REST + WebSocket sync) and a thin
 MCP/CLI client; this is the model to follow if/when Stage 2 (live
 canvas) is undertaken for BPMN.
 
+Stage 2 evidence (FEAT feat-29-playwright-bpmn-prototype, GitHub
+issue #29, PR #30, `VERDICT.md`, 2026-11-22): a throwaway run tested
+the alternative of an agent driving a local bpmn-js Modeler page
+through the Playwright MCP instead of this server's tools. Verdict
+"conditional": **no** as a replacement for the MCP server's tool
+layer - `browser_snapshot` exposes no BPMN model fact, so every run
+depended on an in-page state API (the `window.__bpmn` bridge), which
+is itself a tool layer, at a much higher per-edit cost (10-79 min for
+one six-shape model) - and **viable** as a local edit/preview channel
+next to the server. Consequences for Stage 2:
+
+- This MCP server stays the only agent editing path and the authority
+  for element ids (caller-supplied or deterministic) and for the
+  canonical serialization (`format: true`); browser-produced XML is
+  normalized through the server on ingest.
+- A Stage 2 Modeler page carries a first-class in-page state API (the
+  agent's and the sync layer's view of the model), the turn-based file
+  contract, and the unmodified bpmn.io watermark.
+- The process shape stays the `yctimlin/mcp_excalidraw` split above;
+  the run did not test two-way synchronization and neither confirms
+  nor contradicts it.
+
 ## Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+### 2026-11-22T13:35:13.446+01:00 - Accepted; Stage 2 evidence recorded
+
+Status moved from `draft` to `accepted`: the Confirmation criterion is
+met - the Stage 1 MCP server creates, changes, imports, exports,
+validates, and parses BPMN 2.0 diagrams end to end on bpmn-moddle and
+bpmnlint, and a human views the current diagram in a browser after an
+agent change (PRs #10, #21, #22, #23, #24; FEATs feat-2, feat-17,
+feat-18, feat-19, feat-20). The feat-29 Playwright + Modeler evidence
+run (PR #30) is added under More Information as the Stage 2 input; it
+leaves the chosen option unchanged.
 
 ### 2026-10-22T17:51:00.000Z - Created
 

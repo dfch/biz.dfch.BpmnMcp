@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-18T15:16:37.073+01:00'
 id: feat-29-playwright-bpmn-prototype
-status: review
+status: done
 type: feat
-updated: '2026-11-22T01:54:52.095+01:00'
+updated: '2026-11-22T13:35:13.446+01:00'
 version: 1.0.0
 ---
 
@@ -181,11 +181,15 @@ Anchored in GitHub issue #29.
 
 ### Current Status
 
-**As of 2026-11-21**: the evidence run is COMPLETE and the verdict (`VERDICT.md`) is **conditional** - Playwright + Modeler is a viable foundation for agent-driven BPMN editing under three conditions (the in-page `__bpmn` bridge as a first-class state channel, the established pixel preconditions as documented protocol, id/serialization authority kept with the file-backed server); the proposal's headline claim "without the file-backed MCP server's tool layer" does not survive R3 (the agent is blind without the bridge - every run, pixel or bridge, verified its results through it) and R5/R2/R4 (page saves not byte-equivalent to the server's serialization, six disjoint factory id sets for one model). All eight acceptance criteria are addressed: ACC-001 `bin/100-110-00-verify-page.sh`; ACC-002 `bin/110-110-00-verify-file-api.sh`; ACC-003/ACC-004 the Phase 130 real-browser smoke (`bin/logs/130-120-smoke.md`); ACC-005 `results.md` final via `bin/200-100-00-collect-results.sh` (six sections in rubric order, no `pending:` lines, every `n/a` reasoned, every raw-data reference resolving, the structural minimums, the bin/ naming check); ACC-006 the R6 read-back (`bin/logs/190-120-r6-raw.md`); ACC-007 `VERDICT.md` (this entry references it); ACC-008 the collect script's bin/ naming check, the nested `.gitignore` for `bin/logs/`, and the root gate chain green at close. The close choreography is done: the four verify scripts green with the server stopped, `npm run lint` / `format:check` / `build` / `test` green, `prettier --write` on the feat folder (nothing reformatted), the server left DEAD (port 8123 free, no orphan `web/server.mjs` process), the browser closed, and all changes confined to this feat folder (the one new root-relative file is the nested `.gitignore` inside it). Post-implementation review findings D1/I1-I4 addressed 2026-11-22; the run remains complete and ready for review.
+**As of 2026-11-22**: done. PR #30 was merged into `dev` (commit `f12396c`); the verdict (`VERDICT.md`) is **conditional** - no as a replacement for the file-backed MCP server's tool layer, viable as a local edit/preview channel next to it (bridge first-class, id/serialization authority with the server). The verdict was amended during the PR #30 review (commit `717fb2a`: the two-answer split, the C3 prototype attribution, the server-ids correction, three added caveats) and is recorded in DEC fdc84432-1b48-4eb9-82e0-ec13cb8cf8ba (accepted 2026-11-22). All eight acceptance criteria are addressed (see the Phase 200 and review entries below).
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-22T13:35:13.446+01:00 - PR #30 merged, feature done
+
+PR #30 (branch `feat-29`) was merged into `dev` on 2026-11-22 (commit `f12396c`), closing GitHub issue #29. Before the merge, the PR review amended `VERDICT.md` (commit `717fb2a`, no new measurements): the verdict split into its two answers (no as a tool-layer replacement, viable as an edit/preview channel), C3's formatting and id gaps attributed to the prototype (`saveXML()` without `format: true`; no id parameter in `addShape`), recommendation 1 corrected (the server's `addElement`/`createProcess` already accept caller ids), and three caveats added (no server-tool control arm, the small sample, the uncommitted `bin/logs/`). The verdict is recorded in DEC fdc84432-1b48-4eb9-82e0-ec13cb8cf8ba, accepted the same day. Status moved from `review` to `done`.
 
 #### 2026-11-22T08:36:41.895Z - Post-implementation review findings addressed (D1, I1-I4)
 
@@ -366,3 +370,5 @@ raw logs under `bin/logs/`).
 - c314cfe — Phase 190: the R6 human-in-the-loop evidence and the palette icon fix
 - 2faf62c — close: normalize the progress entry timestamps to the feat schema
 - PR #30: https://github.com/dfch/biz.dfch.BpmnMcp/pull/30 (base dev; the Playwright + bpmn-js Modeler evidence run; the feature status was flipped to review in 11f76a9 before the PR was opened)
+- 717fb2a — the PR #30 review's VERDICT.md amendments
+- f12396c — PR #30 merged into `dev`

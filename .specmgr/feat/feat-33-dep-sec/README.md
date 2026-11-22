@@ -2,9 +2,9 @@
 classification: null
 created: '2026-11-22T10:35:06.926+01:00'
 id: feat-33-dep-sec
-status: review
+status: done
 type: feat
-updated: '2026-11-22T12:06:06.972+01:00'
+updated: '2026-11-22T13:35:13.446+01:00'
 version: 1.0.0
 ---
 
@@ -145,25 +145,27 @@ security-update hygiene, and expands `SECURITY.md`.
 
 ### Current Status
 
-**As of 2026-11-22**: Phases 100 to 130 are done. Phase 130 expanded
-`SECURITY.md` (supported versions, private vulnerability reporting,
-the 5-business-day acknowledgement, the dependency-advisory policy,
-and the CodeQL note), confirmed that GitHub private vulnerability
-reporting is enabled, amended QA 818fac76 7.0030, and updated FEAT
-feat-11-npm-publish-mcp-registry (ACC-007 and ACC-008 met). Phase
-100 took the fallback path (REQ-002 B, DEC
-af53edf7-26d6-4773-9465-471377e42e54, alert #1 dismissed as
-"tolerable risk"). All acceptance criteria, ACC-001 to ACC-008, are
-met. [PR #37](https://github.com/dfch/biz.dfch.BpmnMcp/pull/37)
-(feat-33 to `dev`) is open with green CI (run
-[45013722456](https://github.com/dfch/biz.dfch.BpmnMcp/actions/runs/45013722456)
-and all three CodeQL analyses), and the status is `review`. The
-post-implementation review fixes (G1, G2, D1 to D4) are applied in the
-working tree; I1 and I2 are deferred to a follow-up.
+**As of 2026-11-22**: done. [PR #37](https://github.com/dfch/biz.dfch.BpmnMcp/pull/37)
+was merged into `dev` (commit `6e678fc`) with green CI. All
+acceptance criteria, ACC-001 to ACC-008, are met; Phase 100 took the
+fallback path (REQ-002 B, DEC af53edf7-26d6-4773-9465-471377e42e54,
+alert #1 dismissed as "tolerable risk"). The two deferred review
+findings are tracked as GitHub issues: I1 (a separate audit job) as
+[#39](https://github.com/dfch/biz.dfch.BpmnMcp/issues/39) and I2 (a
+scheduled audit run) as
+[#40](https://github.com/dfch/biz.dfch.BpmnMcp/issues/40).
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-22T13:35:13.446+01:00 - PR #37 merged, feature done
+
+PR #37 (branch `feat-33`) was merged into `dev` on 2026-11-22 (commit
+`6e678fc`), with the post-implementation review fixes (G1, G2, D1 to
+D4) included. The two deferred findings are tracked as GitHub issues:
+I1 (a separate audit job) as #39 and I2 (a scheduled audit run) as
+#40. Status moved from `review` to `done`.
 
 #### 2026-11-22 11:01:28.237Z - Review follow-up
 
@@ -510,6 +512,8 @@ dev-only advisories go through Dependabot alerts and this policy.
 ### Related PRs / Commits
 
 - [PR #33](https://github.com/dfch/biz.dfch.BpmnMcp/pull/33): chore(deps-dev): bump archunit from 2.5.4 to 2.5.5, the trigger for this feature.
+- [PR #37](https://github.com/dfch/biz.dfch.BpmnMcp/pull/37): feat-33: dependency security policy and gates, merged into `dev` as `6e678fc`.
+- [Issue #39](https://github.com/dfch/biz.dfch.BpmnMcp/issues/39) and [issue #40](https://github.com/dfch/biz.dfch.BpmnMcp/issues/40): the deferred review findings I1 and I2.
 - [PR #36](https://github.com/dfch/biz.dfch.BpmnMcp/pull/36): THROWAWAY draft, the CI audit-gate failure proof (Task 110.120), closed without merge and its branch deleted.
 - [Dependabot alert #1](https://github.com/dfch/biz.dfch.BpmnMcp/security/dependabot/1): minimatch [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) (moderate), the alert REQ-002 fixes or dismisses.
 
