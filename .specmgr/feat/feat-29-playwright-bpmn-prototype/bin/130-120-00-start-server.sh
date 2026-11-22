@@ -34,8 +34,11 @@ LOG_DIR="$FEAT_DIR/bin/logs"
 SERVER_LOG="$LOG_DIR/server.out"
 PID_FILE="$LOG_DIR/server.pid"
 
-# The server's command line as started by this script (the pgrep match).
-SERVER_PATTERN="node ${FEAT_DIR}/web/server\.mjs"
+# The pgrep match for the server's command line: the absolute form
+# started by this script (`node <feat-dir>/web/server.mjs`) and the
+# bare relative form an operator may start from the feat dir
+# (`node web/server.mjs`) both end in `web/server.mjs`.
+SERVER_PATTERN='node (.*\/)?web/server\.mjs'
 
 mkdir -p "$LOG_DIR"
 

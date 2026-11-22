@@ -108,8 +108,27 @@ function resolveBpmnJsPackageRoot() {
   }
 }
 
+/**
+ * Resolves the installed `bpmn-js` package's `dist` directory (the
+ * asset root of `/bpmn-js/<file>`); a resolution failure (for example
+ * the feat folder copied standalone, without an installed `bpmn-js`
+ * above it) is a start failure, reported on stderr with a non-zero
+ * exit, like the scratch-directory and port failures.
+ */
+function resolveBpmnJsDistDir() {
+  try {
+    return join(resolveBpmnJsPackageRoot(), 'dist');
+  } catch (error) {
+    // A module resolution failure's error.message carries a multi-line
+    // require stack: report only its first line, keeping the start
+    // failure on a single stderr line, like the port failure.
+    process.stderr.write(`the bpmn-js dist directory could not be resolved: ${error.message.split('\n')[0]}\n`);
+    process.exit(1);
+  }
+}
+
 /** The installed `bpmn-js` package's `dist` directory (the asset root of `/bpmn-js/<file>`). */
-const BPMN_JS_DIST_DIR = join(resolveBpmnJsPackageRoot(), 'dist');
+const BPMN_JS_DIST_DIR = resolveBpmnJsDistDir();
 
 /** The content types the server sends for the file extensions it can serve. */
 const CONTENT_TYPES = {

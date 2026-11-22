@@ -83,7 +83,7 @@ async function main() {
 
   lines.push(`summarize-edited: sequence flows (${flows.length}):`);
   for (const flow of flows) {
-    const condition = flow.conditionExpression ? `  conditionExpression="${flow.conditionExpression.text}"` : '';
+    const condition = flow.conditionExpression ? `  conditionExpression="${flow.conditionExpression.body}"` : '';
     lines.push(`  ${flow.id}  ${flow.sourceRef.id} -> ${flow.targetRef.id}${condition}`);
   }
   const conditions = flows.filter((flow) => flow.conditionExpression).length;
