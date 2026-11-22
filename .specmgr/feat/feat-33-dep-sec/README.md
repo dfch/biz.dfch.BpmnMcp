@@ -4,7 +4,7 @@ created: '2026-11-22T10:35:06.926+01:00'
 id: feat-33-dep-sec
 status: planning
 type: feat
-updated: '2026-11-22T11:31:11.760+01:00'
+updated: '2026-11-22T11:37:06.867+01:00'
 version: 1.0.0
 ---
 
@@ -58,8 +58,8 @@ security-update hygiene, and expands `SECURITY.md`.
 - [x] ACC-004: `.github/workflows/ci.yml` has both audit steps (production at low, full tree at high). Each step is proven separately to fail: one test pins a production dependency to a version with a low or moderate advisory and shows that the production step fails, and another pins a dev dependency to a version with a high or critical advisory and shows that the full-tree step fails. The proof is a CI run on a draft PR (closed without merge), with each failing run's link recorded in a Progress Update entry.
 - [x] ACC-005: The CodeQL default setup is `configured` for actions, javascript-typescript, and python, and its last scheduled run on `dev` or `main` is green. The result is recorded in a Progress Update entry.
 - [x] ACC-006: `.github/dependabot.yml` has the minor/patch grouping with `applies-to: version-updates` for the npm and github-actions ecosystems, keeps the existing TypeScript-major ignore rule (DEC 5185d651), and Dependabot security updates are enabled in the repository settings.
-- [ ] ACC-007: `SECURITY.md` covers every item in REQ-007, including the 5-business-day acknowledgement, and GitHub private vulnerability reporting is enabled for the repository. `SECURITY.md` is documentation, so it needs no SPDX header (CONSTITUTION §1: documentation is covered by `LICENSE`).
-- [ ] ACC-008: QA 818fac76 7.0030's audit note, the gate list in `CONTRIBUTING.md`, and FEAT feat-11-npm-publish-mcp-registry (ACC-001, its out-of-scope residual line, and its CI-parity note) match the outcome of this feature.
+- [x] ACC-007: `SECURITY.md` covers every item in REQ-007, including the 5-business-day acknowledgement, and GitHub private vulnerability reporting is enabled for the repository. `SECURITY.md` is documentation, so it needs no SPDX header (CONSTITUTION §1: documentation is covered by `LICENSE`).
+- [x] ACC-008: QA 818fac76 7.0030's audit note, the gate list in `CONTRIBUTING.md`, and FEAT feat-11-npm-publish-mcp-registry (ACC-001, its out-of-scope residual line, and its CI-parity note) match the outcome of this feature.
 
 ### Scope
 
@@ -135,33 +135,117 @@ security-update hygiene, and expands `SECURITY.md`.
 
 #### Phase 130: Security policy
 
-- [ ] Task 130.100: Enable GitHub private vulnerability reporting for the repository, then expand `SECURITY.md`: supported versions, private vulnerability reporting, the 5-business-day acknowledgement, the CodeQL note on Dependabot PRs, and the dependency-advisory policy (thresholds, override, dismissal, triage of a new advisory against an unchanged lockfile).
-- [ ] Task 130.110: Confirm that private vulnerability reporting is enabled and that the reporting link in `SECURITY.md` opens the GitHub report form.
-- [ ] Task 130.112: Amend the QA 818fac76 7.0030 "Dependency audit note (minimatch)": the residual is removed (main path) or formally dismissed with a reference to the new decision record (fallback path).
-- [ ] Task 130.114: Update FEAT feat-11-npm-publish-mcp-registry: ACC-001's residual baseline, the out-of-scope residual line, and the CI-parity note (`npm audit` is now a CI gate).
-- [ ] Task 130.120: Check every acceptance criterion and the CONSTITUTION, then mark the feature done.
+- [x] Task 130.100: Enable GitHub private vulnerability reporting for the repository, then expand `SECURITY.md`: supported versions, private vulnerability reporting, the 5-business-day acknowledgement, the CodeQL note on Dependabot PRs, and the dependency-advisory policy (thresholds, override, dismissal, triage of a new advisory against an unchanged lockfile). Private vulnerability reporting was already enabled, so no repository setting was changed.
+- [x] Task 130.110: Confirm that private vulnerability reporting is enabled and that the reporting link in `SECURITY.md` opens the GitHub report form.
+- [x] Task 130.112: Amend the QA 818fac76 7.0030 "Dependency audit note (minimatch)": the residual is removed (main path) or formally dismissed with a reference to the new decision record (fallback path).
+- [x] Task 130.114: Update FEAT feat-11-npm-publish-mcp-registry: ACC-001's residual baseline, the out-of-scope residual line, and the CI-parity note (`npm audit` is now a CI gate).
+- [x] Task 130.120: Check every acceptance criterion and the CONSTITUTION, then mark the feature done. The check is done. ACC-002 (B) and ACC-003 wait for green CI on the pushed feat-33 branch, and the orchestrator sets the feature status to `review` (not `done`).
 
 ## Progress
 
 ### Current Status
 
-**As of 2026-11-22**: Phase 120 done. The CodeQL default setup is
-`configured` (actions, javascript-typescript, python; weekly, `default`
-query suite, `remote` threat model), and its most recent scheduled
-run on `dev` (the default branch) is green (ACC-005 met).
-`.github/dependabot.yml` groups minor and patch version updates
-(`applies-to: 'version-updates'`) for npm and github-actions, keeps
-the TypeScript-major ignore rule, and Dependabot security updates are
-enabled (ACC-006 met). Phase 110 is done (ACC-004 met): both CI audit
-gates are in `ci.yml` and were each proven to fail on draft PR #36.
-Phase 100 took the fallback path (REQ-002 B, DEC
+**As of 2026-11-22**: Phases 100 to 130 are done. Phase 130 expanded
+`SECURITY.md` (supported versions, private vulnerability reporting,
+the 5-business-day acknowledgement, the dependency-advisory policy,
+and the CodeQL note), confirmed that GitHub private vulnerability
+reporting is enabled, amended QA 818fac76 7.0030, and updated FEAT
+feat-11-npm-publish-mcp-registry (ACC-007 and ACC-008 met). ACC-001,
+ACC-004, ACC-005, ACC-006, ACC-007, and ACC-008 are met. ACC-002 (B)
+and ACC-003 are met locally and wait only for green CI on the pushed
+feat-33 branch. Phase 100 took the fallback path (REQ-002 B, DEC
 af53edf7-26d6-4773-9465-471377e42e54, alert #1 dismissed as
-"tolerable risk"). ACC-002 (B) stays open until both gates are green
-in CI on the pushed feat-33 branch. Next: Phase 130 (security policy).
+"tolerable risk"). Next: push feat-33, open the PR to `dev`, tick
+ACC-002 (B) and ACC-003 when its CI is green, and set the status to
+`review`.
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-22 10:36:01.958Z - Phase 130 done: security policy
+
+Task 130.100: `gh api repos/dfch/biz.dfch.BpmnMcp/private-vulnerability-reporting`
+returns `{"enabled":true}`. It was already enabled, so no repository
+setting was changed. `SECURITY.md` now has: supported versions (no
+release exists yet, no git tags and no GitHub releases, and
+`apps/mcp-server` is at 0.1.0, so `dev` is the supported line; after
+the first release, only the latest release and `dev`); private
+vulnerability reporting as the primary channel, with the link
+https://github.com/dfch/biz.dfch.BpmnMcp/security/advisories/new and
+`@dfch` only as a fallback to ask for a private channel (no email
+address); acknowledgement within 5 business days; the dependency
+advisory policy (the two CI thresholds with `info` ignored, the
+fix order, when an override is allowed: exact-version pin, documented
+reason, tracked removal trigger; dismissal only as "tolerable risk"
+or "inaccurate" with a comment citing a decision record, with alert
+#1 / DEC af53edf7 as the current entry; the triage of a new advisory
+against an unchanged lockfile: a dedicated fix PR to `dev` before
+other PRs merge, a temporary allow only as a dated `SECURITY.md`
+entry naming the advisory and the follow-up, never lowering the
+thresholds, re-running the job on a registry outage); and the CodeQL
+note (default setup skips Dependabot PRs by design, status
+"skipping"/neutral). `SECURITY.md` is documentation and has no SPDX
+header (CONSTITUTION §1). It passes `npm run format:check`.
+
+Task 130.110: confirmed without a browser login. The private
+vulnerability reporting API returns `{"enabled":true}`. `curl -sI`
+on the reporting link returns `302` to
+`https://github.com/login?return_to=...%2Fsecurity%2Fadvisories%2Fnew`
+(a control URL on a repository that does not exist returns `404`),
+and Playwright lands on "Sign in to GitHub" with the same
+`return_to`. The anonymous repository Security page
+(`/security`, `200`) shows a "Report a vulnerability" link to
+`security/advisories/new`, which GitHub shows only when private
+vulnerability reporting is enabled. Not proven: the rendered report
+form itself, which needs a signed-in session.
+
+Task 130.112: QA 818fac76 7.0030 has a new "Amended (2026-11-22,
+feat-33-dep-sec)" paragraph after the "Dependency audit note
+(minimatch)": the residual is not removed but formally dismissed as
+tolerable risk, citing DEC af53edf7-26d6-4773-9465-471377e42e54 and
+its exit trigger. The historical note is unchanged.
+
+Task 130.114: FEAT feat-11-npm-publish-mcp-registry: ACC-001 now
+requires both CI audit gates to pass and names the residual as the
+dismissed, DEC-recorded, dev-only moderate advisory (2 moderate
+`npm audit` entries for the one advisory); the out-of-scope residual
+line points to DEC af53edf7 and `SECURITY.md`; the CI-parity note
+says that `npm audit` is now a CI gate and that the publish gate job
+mirrors both audit steps (`pre-commit` stays local).
+
+Task 130.120: acceptance criteria and CONSTITUTION check, on feat-33
+at 7975b3f plus the Phase 130 changes, with Node 26.13.1 for the
+tests:
+
+- ACC-001: met (Phase 100; the lockfile carries `archunit` 2.5.5).
+- ACC-002 (B): met locally, not ticked. The nested override is in the
+  root `package.json`; `npm audit` reports only GHSA-g3hv-75wg-m249 on
+  `node_modules/archunit/node_modules/minimatch` (2 moderate);
+  `npm audit --omit=dev --audit-level=low` reports 0 vulnerabilities
+  (exit 0) and `npm audit --audit-level=high` exits 0; alert #1 is
+  `dismissed`, `tolerable_risk`, 2026-11-22T10:24:24Z, with a comment
+  citing DEC af53edf7; the DEC exists. Open: both gates green in CI
+  on the pushed feat-33 branch, which is not pushed yet.
+- ACC-003: met locally, not ticked. `npm ci`, `npm run lint`,
+  `npm run format:check`, and `npm run build` exit 0, and the vitest
+  run with coverage passes (19 files, 361 passed, 2 skipped, including
+  the architecture and license-header suites; 94.47 % statements).
+  Open: the same in CI on the pushed feat-33 branch.
+- ACC-004, ACC-005, ACC-006: met (Phases 110 and 120).
+- ACC-007: met (Tasks 130.100 and 130.110).
+- ACC-008: met (QA 7.0030 amended, `CONTRIBUTING.md` §3/§6 from Task
+  110.130, FEAT feat-11 updated).
+- CONSTITUTION: §1, no new source file; `SECURITY.md` and the
+  specification documents are documentation, and the license-header
+  gate passes. §2, no new dependency; the audit gates and GitHub
+  security features add no runtime or cloud dependency to the tool.
+  §3, the policy has a machine home (the CI audit steps, Dependabot,
+  CodeQL), and `SECURITY.md` documents how to act on it. §4, the
+  archunit architecture suite passes.
+
+The orchestrator ticks ACC-002 (B) and ACC-003 after the PR's CI is
+green and sets the feature status to `review` (not `done`).
 
 #### 2026-11-22 10:31:11.755Z - Phase 120 done: scanning and Dependabot hygiene
 

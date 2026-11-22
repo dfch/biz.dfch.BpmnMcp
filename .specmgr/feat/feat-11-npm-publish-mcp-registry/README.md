@@ -4,7 +4,7 @@ created: '2026-11-01T13:06:50.041+01:00'
 id: feat-11-npm-publish-mcp-registry
 status: planning
 type: feat
-updated: '2026-11-07T07:37:20.209+01:00'
+updated: '2026-11-22T11:34:53.052+01:00'
 version: 1.0.0
 ---
 
@@ -29,7 +29,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 ### Acceptance Criteria
 
-- [ ] ACC-001: On a clean clone, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass from the repository root, `npm audit` reports no vulnerabilities other than the documented residual (archunit → minimatch 10.2.6, GHSA-g3hv-75wg-m249, QA 7.0030), and `uvx pre-commit run --all-files` passes.
+- [ ] ACC-001: On a clean clone, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` all pass from the repository root, `npm audit --omit=dev --audit-level=low` and `npm audit --audit-level=high` (the CI audit gates, feat-33-dep-sec) pass, `npm audit` reports no vulnerabilities other than the documented, dismissed dev-only residual (archunit → minimatch 10.2.6, GHSA-g3hv-75wg-m249, moderate, reported as 2 moderate entries for the one advisory; Dependabot alert #1 dismissed as tolerable risk per DEC af53edf7-26d6-4773-9465-471377e42e54), and `uvx pre-commit run --all-files` passes.
 - [ ] ACC-002: `npm pack` produces a tarball whose file list is exactly the REQ-003 set; the test leg fails on any extra or missing file.
 - [ ] ACC-003: After `prepack`, `dist/index.js` starts with `#!/usr/bin/env node` and carries the exec bit; `src/index.ts` is byte-unchanged (the license gate still passes); the package-directory `LICENSE` is byte-identical to the repository root's.
 - [ ] ACC-004: The clean-environment packed-artifact leg installs the tarball into a temporary prefix, launches the `bin`, and the MCP handshake over stdio lists exactly `import` and `export`.
@@ -56,7 +56,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 - SSE / streamable-http transports and any `remotes` manifest entries (the later `preview` feature's territory; the manifest declares `stdio` only).
 - Docker/OCI package entries and MCPB bundles.
 - Private or test registries (npm has no TestPyPI; the staging legs are the `--dry-run`/`npm pack` test legs and the clean-environment install).
-- Remediating the documented archunit → minimatch 10.2.6 audit residual (tracked in QA 7.0030 until a minimatch-11-compatible archunit release ships).
+- Remediating the documented archunit → minimatch 10.2.6 audit residual (dismissed as tolerable risk and tracked in DEC af53edf7-26d6-4773-9465-471377e42e54 and `SECURITY.md` until a minimatch-11-compatible archunit release ships; QA 7.0030 as amended by feat-33-dep-sec).
 - The remaining Stage 1 tools: `create`, `change`, `validate`, `parse`, `preview`.
 
 ### Dependencies
@@ -84,7 +84,7 @@ feat-1 delivered the scaffold, the gates, and the walking-skeleton server; feat-
 
 **Offline validation.** The `2025-12-11` server schema is vendored as a committed fixture (source URL + fetch date recorded in the test); the gate never fetches from `static.modelcontextprotocol.io`. `mcp-publisher`'s own validation at publish time is distribution-time network use, the same class as publishing to PyPI itself.
 
-**CI parity.** The publish gate job mirrors `ci.yml`'s build job (the five commands) plus the tag/version check; `npm audit` and `pre-commit` remain local gates, as they are today in `ci.yml` (parity recorded, not a gap to close here). Actions are pinned by SHA with the version in a comment, and `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` is set, per `ci.yml`.
+**CI parity.** The publish gate job mirrors `ci.yml`'s build job (the five commands plus the two `npm audit` gates that feat-33-dep-sec added to it: `npm audit --omit=dev --audit-level=low` and `npm audit --audit-level=high`) plus the tag/version check, so nothing is published past a failing dependency audit. `npm audit` is a CI gate now, not a local gate; `pre-commit` remains a local gate, as it is today in `ci.yml` (parity recorded, not a gap to close here). Actions are pinned by SHA with the version in a comment, and `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` is set, per `ci.yml`.
 
 **Three user decisions (resolved, user, 2026-11-01).** (1) Registry name: `io.github.dfch/biz-dfch-bpmnmcp` — mirrors the sibling's `io.github.dfch/biz-dfch-specmgr` (kebab-cased package name; npm's dots become hyphens); registry names are effectively permanent once the first publish lands. (2) First public version: `0.1.0` — matches the sibling's first publish and signals Stage 1 partial (five of the seven tools still deferred). (3) Release branch: fast-forward-only merge of `dev` into `main`, tag on `main` (sibling parity). `main` is dormant today (initial commit only, a strict ancestor of `dev` — the ff-merge is verified possible); the release procedure (REQ-008) establishes the release line, and the first dev→main merge brings in everything committed to `dev` to date.
 
