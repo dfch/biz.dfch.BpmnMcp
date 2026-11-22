@@ -4,7 +4,7 @@ created: '2026-11-22T10:35:06.926+01:00'
 id: feat-33-dep-sec
 status: planning
 type: feat
-updated: '2026-11-22T11:21:40.585+01:00'
+updated: '2026-11-22T11:28:14.399+01:00'
 version: 1.0.0
 ---
 
@@ -55,7 +55,7 @@ security-update hygiene, and expands `SECURITY.md`.
 - [x] ACC-001: PR #33 is merged and the root lockfile carries `archunit` 2.5.5.
 - [ ] ACC-002: Exactly one of these holds, matching the REQ-002 path taken. (A) The root `package.json` has no nested `archunit` override, `npm ls minimatch --all` shows no `minimatch` below 11.0.1, `npm audit` reports 0 moderate-or-higher advisories, and Dependabot alert #1 is closed as fixed. (B) The nested override is still there, `npm audit` reports only the residual (`archunit` → `minimatch 10.2.6`, moderate) and nothing else moderate-or-higher, Dependabot alert #1 is dismissed as "tolerable risk" with a comment citing the new decision record, the decision record exists, and both CI audit gates are green, because the residual is dev-only and below the `high` threshold.
 - [ ] ACC-003: On a clean checkout, `npm ci`, `npm run lint`, `npm run format:check`, `npm run build`, and `npm test -- --coverage` (including the archunit suite) pass locally and in CI.
-- [ ] ACC-004: `.github/workflows/ci.yml` has both audit steps (production at low, full tree at high). Each step is proven separately to fail: one test pins a production dependency to a version with a low or moderate advisory and shows that the production step fails, and another pins a dev dependency to a version with a high or critical advisory and shows that the full-tree step fails. The proof is a CI run on a draft PR (closed without merge), with each failing run's link recorded in a Progress Update entry.
+- [x] ACC-004: `.github/workflows/ci.yml` has both audit steps (production at low, full tree at high). Each step is proven separately to fail: one test pins a production dependency to a version with a low or moderate advisory and shows that the production step fails, and another pins a dev dependency to a version with a high or critical advisory and shows that the full-tree step fails. The proof is a CI run on a draft PR (closed without merge), with each failing run's link recorded in a Progress Update entry.
 - [ ] ACC-005: The CodeQL default setup is `configured` for actions, javascript-typescript, and python, and its last scheduled run on `dev` or `main` is green. The result is recorded in a Progress Update entry.
 - [ ] ACC-006: `.github/dependabot.yml` has the minor/patch grouping with `applies-to: version-updates` for the npm and github-actions ecosystems, keeps the existing TypeScript-major ignore rule (DEC 5185d651), and Dependabot security updates are enabled in the repository settings.
 - [ ] ACC-007: `SECURITY.md` covers every item in REQ-007, including the 5-business-day acknowledgement, and GitHub private vulnerability reporting is enabled for the repository. `SECURITY.md` is documentation, so it needs no SPDX header (CONSTITUTION §1: documentation is covered by `LICENSE`).
@@ -122,10 +122,10 @@ security-update hygiene, and expands `SECURITY.md`.
 
 #### Phase 110: CI audit gates
 
-- [ ] Task 110.100: Add the `npm audit --omit=dev --audit-level=low` step to `.github/workflows/ci.yml`.
-- [ ] Task 110.110: Add the `npm audit --audit-level=high` step to `.github/workflows/ci.yml`.
-- [ ] Task 110.120: Prove that each gate fails separately: from a throwaway branch, open a draft PR that pins a production dependency with a low or moderate advisory (production step fails), then change it to pin a dev dependency with a high or critical advisory (full-tree step fails). Record both failing run links in a Progress Update entry, then close the PR without merging and delete the branch.
-- [ ] Task 110.130: Update the gate list in `CONTRIBUTING.md` so `npm audit` is listed as a CI gate with both thresholds, not as a local-only gate.
+- [x] Task 110.100: Add the `npm audit --omit=dev --audit-level=low` step to `.github/workflows/ci.yml`.
+- [x] Task 110.110: Add the `npm audit --audit-level=high` step to `.github/workflows/ci.yml`.
+- [x] Task 110.120: Prove that each gate fails separately: from a throwaway branch, open a draft PR that pins a production dependency with a low or moderate advisory (production step fails), then change it to pin a dev dependency with a high or critical advisory (full-tree step fails). Record both failing run links in a Progress Update entry, then close the PR without merging and delete the branch.
+- [x] Task 110.130: Update the gate list in `CONTRIBUTING.md` so `npm audit` is listed as a CI gate with both thresholds, not as a local-only gate.
 
 #### Phase 120: Scanning and Dependabot hygiene
 
@@ -145,20 +145,70 @@ security-update hygiene, and expands `SECURITY.md`.
 
 ### Current Status
 
-**As of 2026-11-22**: Phase 100 done on the fallback path (REQ-002 B,
-ACC-002 B). PR #33 is squash-merged into `dev` as 1bbb477, and the
-lockfile carries archunit 2.5.5 (ACC-001 met). archunit 2.5.5 still
-calls `minimatch.makeRe()`, so the nested archunit → `minimatch
-10.2.6` override stays, and the residual is recorded in DEC
-af53edf7-26d6-4773-9465-471377e42e54. Dependabot alert #1 is dismissed
-as "tolerable risk" with a comment citing that DEC (dismissal
-performed by the orchestrator). `npm audit` reports only the residual
-(moderate); `npm audit --omit=dev` is clean. Next: Phase 110 (CI audit
-gates).
+**As of 2026-11-22**: Phase 110 done. `ci.yml` has both audit
+steps after `npm ci` ("Audit production dependencies (low)": `npm
+audit --omit=dev --audit-level=low`; "Audit all dependencies (high)":
+`npm audit --audit-level=high`), and each step was proven to fail on
+its own on throwaway draft PR #36, which is closed without merge and
+whose branch is deleted (ACC-004 met). `CONTRIBUTING.md` lists `npm
+audit` as a CI gate with both thresholds. Locally, both gates exit 0
+on feat-33. ACC-002 (B) stays open until both gates are green in CI on
+the pushed feat-33 branch. Phase 100 took the fallback path (REQ-002
+B): the nested archunit → `minimatch 10.2.6` override stays (DEC
+af53edf7-26d6-4773-9465-471377e42e54) and Dependabot alert #1 is
+dismissed as "tolerable risk". Next: Phase 120 (scanning and
+Dependabot hygiene).
 
 ### Updates
 
 <!-- Newest entry first -- prepend new entries directly below this comment. -->
+
+#### 2026-11-22 10:28:14.394Z - Phase 110 done: CI audit gates
+
+Tasks 110.100 and 110.110: `.github/workflows/ci.yml` has two new
+steps in the `build` job, directly after "Install dependencies" and
+before "Lint": "Audit production dependencies (low)" (`npm audit
+--omit=dev --audit-level=low`, REQ-003) and "Audit all dependencies
+(high)" (`npm audit --audit-level=high`, REQ-004). `permissions:
+contents: read` is unchanged. On feat-33 locally, `npm audit
+--omit=dev --audit-level=low` reports 0 vulnerabilities (exit 0), and
+`npm audit --audit-level=high` reports only the 2 moderate residual
+entries (exit 0).
+
+Task 110.120: each gate was proven to fail on its own on the throwaway
+draft [PR #36](https://github.com/dfch/biz.dfch.BpmnMcp/pull/36)
+(branch `tmp/feat-33-audit-gate-proof` from e6d8f81 plus the new
+`ci.yml`, base `dev`). The pins were picked with a local `npm audit`
+first.
+
+- Production step: commit 1 pinned the production dependency
+  `cookie` 0.6.0 (exact) in `apps/mcp-server`
+  ([GHSA-pxg6-pf52-xh8x](https://github.com/advisories/GHSA-pxg6-pf52-xh8x),
+  low, `cookie <0.7.0`). Run
+  [45012431794](https://github.com/dfch/biz.dfch.BpmnMcp/actions/runs/45012431794)
+  failed at "Audit production dependencies (low)" ("1 low severity
+  vulnerability", exit code 1); every later step was skipped.
+- Full-tree step: commit 2 reverted the `cookie` pin and pinned the
+  root dev dependency `lodash` 4.17.20 (exact; lodash is already a
+  dev-only transitive dependency, at 4.18.1)
+  ([GHSA-35jh-r3h4-6jhm](https://github.com/advisories/GHSA-35jh-r3h4-6jhm),
+  high, `lodash <4.17.21`). Run
+  [45012509394](https://github.com/dfch/biz.dfch.BpmnMcp/actions/runs/45012509394)
+  passed "Audit production dependencies (low)" and failed at "Audit
+  all dependencies (high)" ("3 vulnerabilities (2 moderate, 1 high)",
+  exit code 1).
+
+PR #36 was closed without merge at 2026-11-22T10:27:51Z. The remote
+branch is deleted (the GitHub branches API returns 404), and the
+scratch worktree and the local branch are removed.
+
+Task 110.130: `CONTRIBUTING.md` §3 lists both audit commands, and §6
+states that `npm audit` is a CI gate with both thresholds, not a
+local-only check.
+
+ACC-004 is met. ACC-002 (B) is not ticked yet: it also requires both
+gates to be green in CI on the feat-33 branch, which is not pushed
+yet.
 
 #### 2026-11-22 10:18:36.463Z - Phase 100 done: fallback path
 
@@ -262,6 +312,7 @@ dev-only advisories go through Dependabot alerts and this policy.
 ### Related PRs / Commits
 
 - [PR #33](https://github.com/dfch/biz.dfch.BpmnMcp/pull/33): chore(deps-dev): bump archunit from 2.5.4 to 2.5.5, the trigger for this feature.
+- [PR #36](https://github.com/dfch/biz.dfch.BpmnMcp/pull/36): THROWAWAY draft, the CI audit-gate failure proof (Task 110.120), closed without merge and its branch deleted.
 - [Dependabot alert #1](https://github.com/dfch/biz.dfch.BpmnMcp/security/dependabot/1): minimatch [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) (moderate), the alert REQ-002 fixes or dismisses.
 
 ### More Information

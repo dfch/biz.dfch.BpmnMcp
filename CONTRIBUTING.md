@@ -68,6 +68,8 @@ npm test                # vitest (QA 0.0060)
 npm test -- --coverage  # vitest + @vitest/coverage-v8 (QA 0.0260)
 npm run dev             # tsc --watch (QA 0.0050; a source edit triggers an
                          # incremental rebuild without re-running the command)
+npm audit --omit=dev --audit-level=low  # CI gate: production deps, low or higher
+npm audit --audit-level=high            # CI gate: whole tree, high or critical
 ```
 
 ---
@@ -181,6 +183,15 @@ against the package's own install location.
 - Make sure `npm run lint`, `npm run format:check`, `npm run build`,
   and `npm test` pass locally before opening a pull request; CI runs
   the same gates plus coverage (QA 0.0180).
+- `npm audit` is a CI gate, not a local-only check: CI fails on any
+  production-dependency advisory of severity low or higher
+  (`npm audit --omit=dev --audit-level=low`) and on any high or
+  critical advisory in the whole tree, dev included
+  (`npm audit --audit-level=high`); npm's `info` level is ignored
+  (feat-33-dep-sec). Moderate and low dev-only advisories are handled
+  through Dependabot alerts and `SECURITY.md` (for example the
+  archunit -> `minimatch` residual, DEC af53edf7). Run both commands
+  locally before opening a pull request that changes dependencies.
 - Reference the related issue number in the PR description, if one
   exists.
 
